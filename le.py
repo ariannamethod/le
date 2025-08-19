@@ -457,20 +457,27 @@ def generate(model, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k
 
     return idx
 
-def print_samples(num=20):
-    """ samples from the model and pretty prints the decoded samples """
+def print_samples(num=20, return_samples=False):
+    """Samples from the model and optionally returns the decoded samples.
+
+    When ``return_samples`` is True the function returns a list of samples and
+    suppresses all printing. Otherwise it behaves as before and prints a nice
+    summary.
+    """
     X_init = torch.zeros(num, 1, dtype=torch.long).to(args.device)
     top_k = args.top_k if args.top_k != -1 else None
-    steps = train_dataset.get_output_length() - 1 # -1 because we already start with <START> token (index 0)
+    steps = train_dataset.get_output_length() - 1  # -1 because we already start with <START> token (index 0)
     X_samp = generate(model, X_init, steps, top_k=top_k, do_sample=True).to('cpu')
     train_samples, test_samples, new_samples = [], [], []
+    samples = []
     for i in range(X_samp.size(0)):
         # get the i'th row of sampled integers, as python list
-        row = X_samp[i, 1:].tolist() # note: we need to crop out the first <START> token
+        row = X_samp[i, 1:].tolist()  # note: we need to crop out the first <START> token
         # token 0 is the <STOP> token, so we crop the output sequence at that point
         crop_index = row.index(0) if 0 in row else len(row)
         row = row[:crop_index]
         word_samp = train_dataset.decode(row)
+        samples.append(word_samp)
         # separately track samples that we have and have not seen before
         if train_dataset.contains(word_samp):
             train_samples.append(word_samp)
@@ -478,6 +485,8 @@ def print_samples(num=20):
             test_samples.append(word_samp)
         else:
             new_samples.append(word_samp)
+    if return_samples:
+        return samples
     print('-'*80)
     for lst, desc in [(train_samples, 'in train'), (test_samples, 'in test'), (new_samples, 'new')]:
         print(f"{len(lst)} samples that are {desc}:")
@@ -647,6 +656,7 @@ if __name__ == '__main__':
     parser.add_argument('--device', type=str, default='cpu', help="device to use for compute, examples: cpu|cuda|cuda:2|mps")
     parser.add_argument('--seed', type=int, default=3407, help="seed")
     # sampling
+    parser.add_argument('--num-samples', type=int, default=1, help="number of samples to draw when using --sample-only")
     parser.add_argument('--top-k', type=int, default=-1, help="top-k for sampling, -1 means no top-k")
     # model
     parser.add_argument('--type', type=str, default='transformer', help="model class type to use, bigram|mlp|rnn|gru|bow|transformer")
@@ -706,7 +716,8 @@ if __name__ == '__main__':
         else:
             print("no existing model found in the workdir")
     if args.sample_only:
-        print_samples(num=50)
+        for sample in print_samples(num=args.num_samples, return_samples=True):
+            print(sample)
         sys.exit()
 
     if skip_training:
