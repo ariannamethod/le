@@ -24,7 +24,7 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 WORK_DIR = Path(os.getenv("LE_WORK_DIR", "names"))
 SAMPLE_TIMEOUT = int(os.getenv("LE_SAMPLE_TIMEOUT", "120"))
 TRAINING_TASK: asyncio.Task | None = None
-TRAINING_LIMIT_BYTES = 20 * 1024
+TRAINING_LIMIT_BYTES = 10 * 1024
 
 
 def warmup_model() -> None:
