@@ -116,17 +116,44 @@ async def train(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 def build_dataset() -> Path:
+    files = list(Path("blood").glob("*.txt"))
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as tmp:
-        for txt_file in Path("blood").glob("*.txt"):
+        for txt_file in files:
             tmp.write(txt_file.read_text())
             tmp.write("\n")
     return Path(tmp.name)
+
+
+def initial_train(dataset: Path) -> None:
+    model_path = Path("names/model.pt")
+    if model_path.exists():
+        logging.info("Model already trained. Skipping initial training.")
+        return
+    try:
+        subprocess.run(
+            [
+                "python",
+                "le.py",
+                "-i",
+                str(dataset),
+                "-o",
+                "names",
+                "--max-steps",
+                "200",
+            ],
+            check=True,
+            timeout=600,
+        )
+        logging.info("Initial training completed.")
+    except Exception:
+        logging.exception("Initial training failed.")
 
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
     global DATASET_PATH
     DATASET_PATH = build_dataset()
+    initial_train(DATASET_PATH)
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("train", train))
