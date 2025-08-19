@@ -1,5 +1,7 @@
-import sqlite3
 import hashlib
+import logging
+import sqlite3
+from pathlib import Path
 from typing import Optional
 
 
@@ -45,6 +47,36 @@ class Memory:
             (question, answer),
         )
         self.conn.commit()
+
+    # New functionality for message tracking and repository hashing
+
+    def record_message(self, question: str, answer: str) -> None:
+        """Persist a conversation pair."""
+        self.save_conversation(question, answer)
+
+    def update_repo_hash(self, repo_path: str | Path = ".") -> None:
+        """Compute SHA256 for every file and flag training if anything changed."""
+        repo = Path(repo_path)
+        changed = False
+        db_path = Path(self.conn.execute("PRAGMA database_list").fetchone()[2])
+        for file in repo.rglob("*"):
+            if (
+                file.is_file()
+                and ".git" not in file.parts
+                and file != db_path
+            ):
+                digest = self.hash_file(str(file))
+                key = f"hash:{file.relative_to(repo)}"
+                if self.get_meta(key) != digest:
+                    logging.info("Hash for %s changed", file)
+                    self.set_meta(key, digest)
+                    changed = True
+        if changed:
+            self.set_meta("needs_training", "1")
+
+    def needs_training(self) -> bool:
+        """Return True if retraining is required."""
+        return self.get_meta("needs_training") == "1"
 
     @staticmethod
     def hash_file(path: str) -> str:
