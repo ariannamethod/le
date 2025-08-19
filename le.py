@@ -428,7 +428,7 @@ class Bigram(nn.Module):
 # helper functions for evaluating and sampling from the model
 
 @torch.no_grad()
-def generate(model, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k=None):
+def generate(model, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k=None, top_p=None):
     """
     Take a conditioning sequence of indices idx (LongTensor of shape (b,t)) and complete
     the sequence max_new_tokens times, feeding the predictions back into the model each time.
@@ -442,10 +442,19 @@ def generate(model, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k
         logits, _ = model(idx_cond)
         # pluck the logits at the final step and scale by desired temperature
         logits = logits[:, -1, :] / temperature
-        # optionally crop the logits to only the top k options
+        # optionally crop the logits to only the top k or nucleus top_p options
         if top_k is not None:
             v, _ = torch.topk(logits, top_k)
             logits[logits < v[:, [-1]]] = -float('Inf')
+        if top_p is not None:
+            sorted_logits, sorted_indices = torch.sort(logits, descending=True)
+            cumulative_probs = F.softmax(sorted_logits, dim=-1).cumsum(dim=-1)
+            sorted_indices_to_remove = cumulative_probs > top_p
+            sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+            sorted_indices_to_remove[..., 0] = 0
+            for i in range(logits.size(0)):
+                indices = sorted_indices[i][sorted_indices_to_remove[i]]
+                logits[i, indices] = -float('Inf')
         # apply softmax to convert logits to (normalized) probabilities
         probs = F.softmax(logits, dim=-1)
         # either sample from the distribution or take the most likely element
@@ -457,6 +466,60 @@ def generate(model, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k
         idx = torch.cat((idx, idx_next), dim=1)
 
     return idx
+
+def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens: int = 20, temperature: float = 1.0, top_k: int | None = 50, top_p: float | None = 0.95) -> str:
+    """Generate text conditioned on a prompt and conversation history.
+
+    The ``prompt`` is tokenized, the token with the highest information gain
+    (lowest probability given preceding context) is selected as the "charged"
+    word, and generation is seeded with this token. Previous conversation
+    history retrieved from ``memory`` is prepended to provide additional
+    context. Nucleus (``top_p``) or top-k sampling is used during generation to
+    avoid verbatim dataset quotes.
+
+    The returned string always begins with a capital letter and ends with a
+    period.
+    """
+
+    def _encode(text: str) -> torch.Tensor:
+        return torch.tensor([dataset.stoi[ch] for ch in text if ch in dataset.stoi], dtype=torch.long)
+
+    memory_tokens = _encode(" ".join(memory.get_messages()))
+    prompt_tokens = _encode(prompt)
+    start_tok = torch.tensor([0], dtype=torch.long)
+    block_size = model.get_block_size()
+    max_memory = block_size - len(prompt_tokens) - 1
+    if max_memory > 0 and len(memory_tokens) > max_memory:
+        memory_tokens = memory_tokens[-max_memory:]
+    context_for_charge = torch.cat((start_tok, memory_tokens, prompt_tokens), dim=0)
+    charged_token = prompt_tokens[0] if len(prompt_tokens) > 0 else torch.tensor(0)
+
+    if context_for_charge.numel() > 1 and len(prompt_tokens) > 0:
+        logits, _ = model(context_for_charge[:-1].unsqueeze(0).to(DEVICE))
+        probs = F.softmax(logits, dim=-1)[0]
+        token_probs = probs[torch.arange(context_for_charge.size(0)-1), context_for_charge[1:]]
+        prompt_probs = token_probs[-len(prompt_tokens):]
+        charged_idx = torch.argmin(prompt_probs)
+        charged_token = prompt_tokens[charged_idx]
+
+    idx_context = torch.cat((start_tok, memory_tokens, prompt_tokens, charged_token.view(1)), dim=0)
+    if idx_context.size(0) > block_size:
+        idx_context = idx_context[-block_size:]
+    idx = idx_context.unsqueeze(0).to(DEVICE)
+    out = generate(model, idx, max_new_tokens, temperature=temperature, do_sample=True, top_k=top_k, top_p=top_p)
+    gen_tokens = out[0, idx.size(1):].tolist()
+    if 0 in gen_tokens:
+        gen_tokens = gen_tokens[:gen_tokens.index(0)]
+    gen_tokens = [t for t in gen_tokens if t != 0]
+    if not gen_tokens:
+        gen_tokens = [charged_token.item()]
+    text = dataset.decode(gen_tokens)
+    text = text.strip()
+    if text:
+        text = text[0].upper() + text[1:]
+    if not text.endswith('.'):
+        text += '.'
+    return text
 
 def print_samples(num=20, return_samples=False):
     """Samples from the model and optionally returns the decoded samples.
