@@ -670,7 +670,6 @@ if __name__ == '__main__':
     parser.add_argument('--weight-decay', '-w', type=float, default=0.01, help="weight decay")
     parser.add_argument('--quiet', action='store_true', help="suppress non-sample output when used with --sample-only")
     args = parser.parse_args()
-    global QUIET
     QUIET = args.quiet and args.sample_only
     qprint(vars(args))
 

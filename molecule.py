@@ -21,7 +21,11 @@ from inhale_exhale import inhale, exhale, memory
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
-WORK_DIR = Path(os.getenv("LE_WORK_DIR", "names"))
+# Resolve and ensure the working directory exists and is writable
+WORK_DIR = Path(os.getenv("LE_WORK_DIR", "names")).resolve()
+WORK_DIR.mkdir(parents=True, exist_ok=True)
+if not os.access(WORK_DIR, os.W_OK):
+    raise PermissionError(f"Cannot write to {WORK_DIR}")
 SAMPLE_TIMEOUT = int(os.getenv("LE_SAMPLE_TIMEOUT", "120"))
 TRAINING_TASK: asyncio.Task | None = None
 TRAINING_LIMIT_BYTES = 10 * 1024
@@ -159,7 +163,7 @@ async def run_training(
             stderr=asyncio.subprocess.PIPE,
         )
         try:
-            _, stderr = await asyncio.wait_for(
+            stdout, stderr = await asyncio.wait_for(
                 proc.communicate(), timeout=600
             )
         except asyncio.TimeoutError:
@@ -173,8 +177,18 @@ async def run_training(
                 await context.bot.send_message(
                     chat_id=chat_id, text="Training completed."
                 )
+            if stdout:
+                logging.debug("Training stdout: %s", stdout.decode())
+            if stderr:
+                logging.debug("Training stderr: %s", stderr.decode())
         else:
-            logging.error("Training failed: %s", stderr.decode())
+            logging.error(
+                "Training failed with code %s", proc.returncode
+            )
+            if stdout:
+                logging.error("stdout: %s", stdout.decode())
+            if stderr:
+                logging.error("stderr: %s", stderr.decode())
     except Exception:
         logging.exception("Training error")
     finally:
