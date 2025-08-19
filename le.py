@@ -26,6 +26,23 @@ from torch.nn import functional as F
 from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from inhale_exhale import Cycle
+
+cycle = Cycle()
+
+
+def fine_tune(async_mode: bool = False) -> None:
+    """Placeholder fine-tuning function.
+
+    Parameters
+    ----------
+    async_mode : bool
+        Flag indicating asynchronous invocation.
+    """
+
+    # Fine-tuning logic would be implemented here.
+    # This function is intentionally lightweight.
+    print(f"Fine-tune called (async={async_mode})")
 
 # -----------------------------------------------------------------------------
 
@@ -531,6 +548,7 @@ def chat(model, data_path):
         print(f'le: {response}')
         with open(log_path, 'a', encoding='utf-8') as f:
             f.write(f'User: {user}\nLE: {response}\n')
+        cycle.inhale(len(user) + len(response))
 
 # -----------------------------------------------------------------------------
 # helper functions for creating the training and test Datasets that emit words
