@@ -26,7 +26,7 @@ async def test_respond_produces_one_line(monkeypatch, tmp_path):
     dataset_file.write_text("hello\n")
     monkeypatch.setattr(molecule, "build_dataset", lambda q=None: dataset_file)
 
-    monkeypatch.setattr(molecule, "inhale", lambda q, r: None)
+    monkeypatch.setattr(molecule, "inhale", lambda q, r, c: None)
 
     async def dummy_exhale(chat_id, context):
         return None
@@ -80,7 +80,7 @@ async def test_respond_handles_timeout(monkeypatch, tmp_path):
     dataset_file = tmp_path / "dataset.txt"
     dataset_file.write_text("hello\n")
     monkeypatch.setattr(molecule, "build_dataset", lambda q=None: dataset_file)
-    monkeypatch.setattr(molecule, "inhale", lambda q, r: None)
+    monkeypatch.setattr(molecule, "inhale", lambda q, r, c: None)
 
     async def dummy_exhale(chat_id, context):
         return None
@@ -142,7 +142,7 @@ async def test_respond_returns_line_when_model_missing(monkeypatch, tmp_path):
     molecule.TRAINING_TASK = None
 
     monkeypatch.setattr(molecule.random, "choice", lambda seq: seq[0])
-    monkeypatch.setattr(molecule, "inhale", lambda q, r: None)
+    monkeypatch.setattr(molecule, "inhale", lambda q, r, c: None)
 
     async def dummy_exhale(chat_id, context):
         return None

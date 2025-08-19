@@ -21,7 +21,7 @@ def test_build_dataset_includes_memory_and_question(tmp_path, monkeypatch):
     blood_dir.mkdir()
     (blood_dir / "base.txt").write_text("base\n")
     mem = Memory(str(tmp_path / "memory.db"))
-    mem.record_message("q1", "a1")
+    mem.record_message("q1", "a1", "ctx1")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(molecule, "memory", mem)
     dataset_path = molecule.build_dataset("q2")

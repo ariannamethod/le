@@ -541,7 +541,8 @@ def chat(model, data_path, memory):
             out = out[:out.index(0)]
         response = train_dataset.decode(out)
         print(f'le: {response}')
-        memory.save_conversation(user, response)
+        combined_context = f"interactive:{user}"
+        memory.record_message(user, response, combined_context)
         with open(log_path, 'a', encoding='utf-8') as f:
             f.write(f'User: {user}\nLE: {response}\n')
 

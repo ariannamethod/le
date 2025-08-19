@@ -32,6 +32,7 @@ class Memory:
             """
             CREATE TABLE IF NOT EXISTS conversations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                context TEXT,
                 question TEXT,
                 answer TEXT
             )
@@ -51,18 +52,18 @@ class Memory:
         )
         self.conn.commit()
 
-    def save_conversation(self, question: str, answer: str) -> None:
+    def save_conversation(self, context: str, question: str, answer: str) -> None:
         self.conn.execute(
-            "INSERT INTO conversations(question, answer) VALUES (?, ?)",
-            (question, answer),
+            "INSERT INTO conversations(context, question, answer) VALUES (?, ?, ?)",
+            (context, question, answer),
         )
         self.conn.commit()
 
     # New functionality for message tracking and repository hashing
 
-    def record_message(self, question: str, answer: str) -> None:
-        """Persist a conversation pair."""
-        self.save_conversation(question, answer)
+    def record_message(self, question: str, answer: str, context: str) -> None:
+        """Persist a conversation pair with associated context."""
+        self.save_conversation(context, question, answer)
 
     def get_messages(self, limit: int | None = None) -> list[str]:
         """Return recent conversation lines in chronological order."""
@@ -80,6 +81,16 @@ class Memory:
             if answer:
                 lines.append(answer)
         return lines
+
+    def get_conversations(self, limit: int | None = None) -> list[tuple[str, str, str]]:
+        """Return stored conversations including context in chronological order."""
+        cur = self.conn.cursor()
+        query = "SELECT context, question, answer FROM conversations ORDER BY id"
+        if limit is not None:
+            cur.execute(query + " LIMIT ?", (limit,))
+        else:
+            cur.execute(query)
+        return cur.fetchall()
 
     def update_repo_hash(self, repo_path: str | Path = ".") -> None:
         """Compute file hashes and flag training when source files change.

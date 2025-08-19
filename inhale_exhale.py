@@ -27,9 +27,9 @@ def _startup_training_check() -> None:
 asyncio.get_event_loop().call_soon(_startup_training_check)
 
 
-def inhale(question: str, answer: str) -> None:
-    """Record the latest conversation and update repository hash."""
-    memory.record_message(question, answer)
+def inhale(question: str, answer: str, context: str) -> None:
+    """Record the latest conversation along with its context and update the hash."""
+    memory.record_message(question, answer, context)
     memory.update_repo_hash()
 
 
