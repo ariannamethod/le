@@ -28,6 +28,9 @@ from torch.utils.data.dataloader import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from memory import Memory
 
+# force CPU execution
+DEVICE = torch.device('cpu')
+
 # -----------------------------------------------------------------------------
 
 @dataclass
@@ -464,7 +467,7 @@ def print_samples(num=20, return_samples=False):
     suppresses all printing. Otherwise it behaves as before and prints a nice
     summary.
     """
-    X_init = torch.zeros(num, 1, dtype=torch.long).to(args.device)
+    X_init = torch.zeros(num, 1, dtype=torch.long).to(DEVICE)
     top_k = args.top_k if args.top_k != -1 else None
     steps = train_dataset.get_output_length() - 1  # -1 because we already start with <START> token (index 0)
     X_samp = generate(model, X_init, steps, top_k=top_k, do_sample=True).to('cpu')
@@ -500,7 +503,7 @@ def evaluate(model, dataset, batch_size=50, max_batches=None):
     loader = DataLoader(dataset, shuffle=True, batch_size=batch_size, num_workers=0)
     losses = []
     for i, batch in enumerate(loader):
-        batch = [t.to(args.device) for t in batch]
+        batch = [t.to(DEVICE) for t in batch]
         X, Y = batch
         logits, loss = model(X, Y)
         losses.append(loss.item())
@@ -525,13 +528,13 @@ def chat(model, data_path, memory):
         if user is None or user.strip() == '':
             break
         for _ in range(20):
-            X, Y = [t.to(args.device) for t in loader.next()]
+            X, Y = [t.to(DEVICE) for t in loader.next()]
             logits, loss = model(X, Y)
             model.zero_grad(set_to_none=True)
             loss.backward()
             optimizer.step()
         context = [train_dataset.stoi.get(ch, 0) for ch in user]
-        x = torch.tensor([[0] + context], dtype=torch.long).to(args.device)
+        x = torch.tensor([[0] + context], dtype=torch.long).to(DEVICE)
         y = generate(model, x, train_dataset.get_output_length(), do_sample=True,
                      top_k=args.top_k if args.top_k != -1 else None).to('cpu')
         out = y[0, len(context)+1:].tolist()
@@ -653,7 +656,6 @@ if __name__ == '__main__':
     parser.add_argument('--sample-only', action='store_true', help="just sample from the model and quit, don't train")
     parser.add_argument('--num-workers', '-n', type=int, default=4, help="number of data workers for both train/test")
     parser.add_argument('--max-steps', type=int, default=200, help="max number of optimization steps to run for, or -1 for infinite.")
-    parser.add_argument('--device', type=str, default='cpu', help="device to use for compute, examples: cpu|cuda|cuda:2|mps")
     parser.add_argument('--seed', type=int, default=3407, help="seed")
     # sampling
     parser.add_argument('--num-samples', type=int, default=1, help="number of samples to draw when using --sample-only")
@@ -673,7 +675,6 @@ if __name__ == '__main__':
 
     # system inits
     torch.manual_seed(args.seed)
-    torch.cuda.manual_seed_all(args.seed)
     os.makedirs(args.work_dir, exist_ok=True)
     writer = SummaryWriter(log_dir=args.work_dir)
 
@@ -706,7 +707,7 @@ if __name__ == '__main__':
         model = BoW(config)
     else:
         raise ValueError(f'model type {args.type} is not recognized')
-    model.to(args.device)
+    model.to(DEVICE)
     print(f"model #params: {sum(p.numel() for p in model.parameters())}")
     model_path = os.path.join(args.work_dir, 'model.pt')
     if args.resume or args.sample_only or skip_training:
@@ -746,7 +747,7 @@ if __name__ == '__main__':
 
             # get the next batch, ship to device, and unpack it to input and target
             batch = batch_loader.next()
-            batch = [t.to(args.device) for t in batch]
+            batch = [t.to(DEVICE) for t in batch]
             X, Y = batch
 
             # feed into the model
@@ -757,9 +758,6 @@ if __name__ == '__main__':
             loss.backward()
             optimizer.step()
 
-            # wait for all CUDA work on the GPU to finish then calculate iteration time taken
-            if args.device.startswith('cuda'):
-                torch.cuda.synchronize()
             t1 = time.time()
 
             # logging
