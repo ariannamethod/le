@@ -84,7 +84,7 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         inhale(question, reply)
         await exhale(update.effective_chat.id, context)
         return
-    dataset_path = build_dataset(question)
+    dataset_path = build_dataset()
     try:
         seed = random.randint(0, 2**31 - 1)
         proc = await asyncio.create_subprocess_exec(
@@ -95,6 +95,8 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "--work-dir",
             str(WORK_DIR),
             "--sample-only",
+            "--prompt",
+            question,
             "--num-samples",
             "1",
             "--seed",

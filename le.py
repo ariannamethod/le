@@ -10,7 +10,6 @@ import time
 import math
 import argparse
 from dataclasses import dataclass
-from typing import List
 
 import torch
 import torch.nn as nn
@@ -321,7 +320,6 @@ class RNN(nn.Module):
         return self.block_size
 
     def forward(self, idx, targets=None):
-        device = idx.device
         b, t = idx.size()
 
         # embed all the integers up front and all at once for efficiency
@@ -659,6 +657,7 @@ if __name__ == '__main__':
     # sampling
     parser.add_argument('--num-samples', type=int, default=1, help="number of samples to draw when using --sample-only")
     parser.add_argument('--top-k', type=int, default=-1, help="top-k for sampling, -1 means no top-k")
+    parser.add_argument('--prompt', type=str, default=None, help="prompt to condition on when sampling")
     # model
     parser.add_argument('--type', type=str, default='transformer', help="model class type to use, bigram|mlp|rnn|gru|bow|transformer")
     parser.add_argument('--n-layer', type=int, default=4, help="number of layers")
@@ -719,8 +718,25 @@ if __name__ == '__main__':
         else:
             qprint("no existing model found in the workdir")
     if args.sample_only:
-        for sample in print_samples(num=args.num_samples, return_samples=True):
+        top_k = args.top_k if args.top_k != -1 else None
+        if args.prompt:
+            context = [train_dataset.stoi.get(ch, 0) for ch in args.prompt]
+            x = torch.tensor([[0] + context], dtype=torch.long).to(DEVICE)
+            y = generate(
+                model,
+                x,
+                train_dataset.get_output_length(),
+                do_sample=True,
+                top_k=top_k,
+            ).to('cpu')
+            out = y[0, len(context) + 1 :].tolist()
+            if 0 in out:
+                out = out[: out.index(0)]
+            sample = train_dataset.decode(out)
             print(sample)
+        else:
+            for sample in print_samples(num=args.num_samples, return_samples=True):
+                print(sample)
         sys.exit()
 
     if skip_training:
