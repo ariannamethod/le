@@ -54,3 +54,12 @@ async def exhale(chat_id: int, context) -> None:
         molecule.TRAINING_TASK = asyncio.create_task(
             molecule.run_training(chat_id, context)
         )
+    else:
+        logging.info("Training already running; will retrigger if still needed")
+
+        def _retry(_task: asyncio.Task) -> None:
+            asyncio.create_task(exhale(chat_id, context))
+
+        if not getattr(molecule.TRAINING_TASK, "_retry_set", False):
+            molecule.TRAINING_TASK.add_done_callback(_retry)
+            setattr(molecule.TRAINING_TASK, "_retry_set", True)

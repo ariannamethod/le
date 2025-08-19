@@ -6,7 +6,7 @@ import pytest
 import molecule
 
 
-async def _noop_run_training(chat_id, context):
+async def _noop_run_training(chat_id, context, extra_dataset=None):
     return None
 
 
@@ -136,7 +136,7 @@ async def test_respond_returns_line_when_model_missing(monkeypatch, tmp_path):
 
     started = {"flag": False}
 
-    async def dummy_run_training(chat_id, context):
+    async def dummy_run_training(chat_id, context, extra_dataset=None):
         started["flag"] = True
 
     molecule.run_training = dummy_run_training

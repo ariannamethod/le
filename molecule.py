@@ -145,10 +145,22 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def run_training(
-    chat_id: int | None, context: ContextTypes.DEFAULT_TYPE | None
+    chat_id: int | None,
+    context: ContextTypes.DEFAULT_TYPE | None,
+    extra_dataset: Path | None = None,
 ) -> None:
     dataset_path = build_dataset()
+    if extra_dataset:
+        try:
+            with dataset_path.open("a", encoding="utf-8") as dst, extra_dataset.open(
+                "r", encoding="utf-8"
+            ) as src:
+                dst.write("\n")
+                dst.write(src.read())
+        except OSError:
+            logging.exception("Failed to append extra dataset")
     try:
+        memory.set_meta("needs_training", "0")
         proc = await asyncio.create_subprocess_exec(
             "python",
             "le.py",
@@ -173,7 +185,6 @@ async def run_training(
             logging.exception("Training timed out")
             return
         if proc.returncode == 0:
-            memory.set_meta("needs_training", "0")
             if context and chat_id is not None:
                 await context.bot.send_message(
                     chat_id=chat_id, text="Training completed."
@@ -194,6 +205,15 @@ async def run_training(
         logging.exception("Training error")
     finally:
         dataset_path.unlink(missing_ok=True)
+
+
+def fine_tune(extra_dataset: Path) -> None:
+    """Launch fine-tuning with an additional dataset."""
+    global TRAINING_TASK
+    if TRAINING_TASK and not TRAINING_TASK.done():
+        logging.info("Training already in progress; skipping fine-tune trigger")
+        return
+    TRAINING_TASK = asyncio.create_task(run_training(None, None, extra_dataset))
 
 
 async def train(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
