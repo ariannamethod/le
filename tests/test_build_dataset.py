@@ -7,7 +7,7 @@ def test_build_dataset_enforces_limit(tmp_path, monkeypatch):
     chunk = "a" * (molecule.TRAINING_LIMIT_BYTES // 2)
     (blood_dir / "f1.txt").write_text(chunk)
     (blood_dir / "f2.txt").write_text(chunk)
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LE_DATA_DIR", str(blood_dir))
     dataset_path = molecule.build_dataset()
     try:
         assert dataset_path.stat().st_size == molecule.TRAINING_LIMIT_BYTES

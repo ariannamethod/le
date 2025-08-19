@@ -28,6 +28,10 @@ charlotte
 ...
 ```
 
+By default these files are read from the `blood` directory. To use a different
+dataset location, set the `LE_DATA_DIR` environment variable to the directory
+containing your `.txt` files.
+
 To train a model and save it to the `names` directory:
 
 ```bash

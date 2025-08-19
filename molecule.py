@@ -23,6 +23,7 @@ load_dotenv()
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 WORK_DIR = Path(os.getenv("LE_WORK_DIR", "names"))
 SAMPLE_TIMEOUT = int(os.getenv("LE_SAMPLE_TIMEOUT", "120"))
+DATA_DIR = Path(os.getenv("LE_DATA_DIR", "blood"))
 TRAINING_TASK: asyncio.Task | None = None
 TRAINING_LIMIT_BYTES = 20 * 1024
 
@@ -195,11 +196,12 @@ async def train(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 def build_dataset() -> Path:
+    data_dir = Path(os.getenv("LE_DATA_DIR", str(DATA_DIR)))
     with tempfile.NamedTemporaryFile(
         mode="w", delete=False, suffix=".txt", encoding="utf-8"
     ) as tmp:
         total = 0
-        for txt_file in Path("blood").glob("*.txt"):
+        for txt_file in data_dir.glob("*.txt"):
             data_bytes = (
                 txt_file.read_text(encoding="utf-8") + "\n"
             ).encode("utf-8")
