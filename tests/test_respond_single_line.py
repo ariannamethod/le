@@ -36,7 +36,7 @@ async def test_respond_produces_one_line(monkeypatch, tmp_path):
         captured['args'] = args
 
         class Res:
-            stdout = "sample\n"
+            stdout = "noise\nsample\n\n"
 
         return Res()
     monkeypatch.setattr(molecule.subprocess, "run", fake_run)
@@ -56,4 +56,5 @@ async def test_respond_produces_one_line(monkeypatch, tmp_path):
 
     assert replies == ["sample"]
     assert "--num-samples" in captured['args'] and "1" in captured['args']
+    assert "--quiet" in captured['args']
     assert "\n" not in replies[0]

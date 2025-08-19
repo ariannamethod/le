@@ -59,13 +59,15 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 "1",
                 "--seed",
                 str(seed),
+                "--quiet",
             ],
             capture_output=True,
             text=True,
             check=True,
             timeout=60,
         )
-        reply = result.stdout.strip() or "No output from LE."
+        lines = [line for line in result.stdout.splitlines() if line.strip()]
+        reply = lines[-1] if lines else "No output from LE."
     except Exception as exc:
         logging.exception("Sampling error")
         reply = f"Error: {exc}"
