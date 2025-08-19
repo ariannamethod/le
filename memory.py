@@ -11,6 +11,9 @@ class Memory:
     def __init__(self, path: str = "memory.db") -> None:
         self.conn = sqlite3.connect(path)
         self._init_db()
+        # Establish a baseline of hashes so that startup does not trigger
+        # training. Actual changes will be detected in subsequent calls.
+        self.update_repo_hash(initial=True)
 
     def close(self) -> None:
         """Close the underlying database connection."""
@@ -81,18 +84,28 @@ class Memory:
                 lines.append(answer)
         return lines
 
-    def update_repo_hash(self, repo_path: str | Path = ".") -> None:
+    def update_repo_hash(
+        self, repo_path: str | Path = ".", *, initial: bool = False
+    ) -> None:
         """Compute file hashes and flag training when source files change.
+
+        Tracks all files for code changes and specifically watches the
+        ``blood/`` and ``datasets/`` directories. When data files change we
+        accumulate their sizes and trigger training once the total exceeds
+        10KB.
 
         Temporary artefacts such as logs or databases are ignored so that
         only relevant source data and code trigger retraining.
         """
 
         repo = Path(repo_path)
-        changed = False
+        code_changed = False
+        data_changed_bytes = 0
+
         db_path = Path(self.conn.execute("PRAGMA database_list").fetchone()[2])
         ignored_dirs = {".git", "logs", "__pycache__", ".pytest_cache"}
         ignored_names = {db_path.name, "memory.db"}
+        data_dirs = {repo / "blood", repo / "datasets"}
 
         for file in repo.rglob("*"):
             if not file.is_file():
@@ -105,11 +118,24 @@ class Memory:
             digest = self.hash_file(str(file))
             key = f"hash:{file.relative_to(repo)}"
             if self.get_meta(key) != digest:
-                logging.info("Hash for %s changed", file)
+                if not initial:
+                    logging.info("Hash for %s changed", file)
+                    if any(d in file.parents for d in data_dirs):
+                        data_changed_bytes += file.stat().st_size
+                    else:
+                        code_changed = True
                 self.set_meta(key, digest)
-                changed = True
-        if changed:
+
+        if code_changed:
             self.set_meta("needs_training", "1")
+
+        if data_changed_bytes:
+            total = int(self.get_meta("data_pending_bytes") or "0")
+            total += data_changed_bytes
+            if total >= 10 * 1024:
+                self.set_meta("needs_training", "1")
+                total = 0
+            self.set_meta("data_pending_bytes", str(total))
 
     def needs_training(self) -> bool:
         """Return True if retraining is required."""
