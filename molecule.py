@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import random
 import subprocess
 import tempfile
 from pathlib import Path
@@ -40,6 +41,7 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     try:
+        seed = random.randint(0, 2**31 - 1)
         result = subprocess.run(
             [
                 "python",
@@ -49,6 +51,8 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 "-o",
                 "names",
                 "--sample-only",
+                "--seed",
+                str(seed),
             ],
             capture_output=True,
             text=True,
@@ -56,9 +60,13 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             timeout=60,
         )
         lines = [
-            line for line in result.stdout.splitlines() if line.strip()
+            line.strip()
+            for line in result.stdout.splitlines()
+            if line.strip()
+            and not line.startswith("-")
+            and "samples that are" not in line
         ]
-        reply = "\n".join(lines[-10:]) if lines else "No output from LE."
+        reply = random.choice(lines) if lines else "No output from LE."
     except Exception as exc:
         logging.exception("Sampling error")
         reply = f"Error: {exc}"
