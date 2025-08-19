@@ -11,8 +11,8 @@ from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
-    MessageHandler,
     ContextTypes,
+    MessageHandler,
     filters,
 )
 
@@ -22,7 +22,41 @@ load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 WORK_DIR = Path(os.getenv("LE_WORK_DIR", "names"))
+SAMPLE_TIMEOUT = int(os.getenv("LE_SAMPLE_TIMEOUT", "120"))
 TRAINING_TASK: asyncio.Task | None = None
+
+
+def warmup_model() -> None:
+    """Run a sample to load the model and warm up caches."""
+    model_path = WORK_DIR / "model.pt"
+    if not model_path.exists():
+        return
+    dataset_path = build_dataset()
+    try:
+        subprocess.run(
+            [
+                "python",
+                "le.py",
+                "-i",
+                str(dataset_path),
+                "--work-dir",
+                str(WORK_DIR),
+                "--sample-only",
+                "--num-samples",
+                "1",
+                "--seed",
+                "0",
+                "--quiet",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=SAMPLE_TIMEOUT,
+        )
+    except Exception:
+        logging.exception("Warmup failed")
+    finally:
+        dataset_path.unlink(missing_ok=True)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -65,10 +99,13 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             capture_output=True,
             text=True,
             check=True,
-            timeout=60,
+            timeout=SAMPLE_TIMEOUT,
         )
         lines = [line for line in result.stdout.splitlines() if line.strip()]
         reply = lines[-1] if lines else "No output from LE."
+    except subprocess.TimeoutExpired:
+        logging.exception("Sampling timed out")
+        reply = "Sampling timed out."
     except Exception as exc:
         logging.exception("Sampling error")
         reply = f"Error: {exc}"
@@ -158,6 +195,7 @@ def main() -> None:
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, respond)
     )
+    warmup_model()
     app.run_polling()
 
 
