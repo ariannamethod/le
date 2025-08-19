@@ -53,6 +53,8 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 "-o",
                 "names",
                 "--sample-only",
+                "--num-samples",
+                "1",
                 "--seed",
                 str(seed),
             ],
@@ -61,14 +63,7 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             check=True,
             timeout=60,
         )
-        lines = [
-            line.strip()
-            for line in result.stdout.splitlines()
-            if line.strip()
-            and not line.startswith("-")
-            and "samples that are" not in line
-        ]
-        reply = random.choice(lines) if lines else "No output from LE."
+        reply = result.stdout.strip() or "No output from LE."
     except Exception as exc:
         logging.exception("Sampling error")
         reply = f"Error: {exc}"
