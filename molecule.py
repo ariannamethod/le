@@ -1,4 +1,5 @@
 import asyncio
+import csv
 import logging
 import os
 import random
@@ -210,33 +211,45 @@ def build_dataset(latest_line: str | None = None) -> Path:
         mode="w", delete=False, suffix=".txt", encoding="utf-8"
     ) as tmp:
         total = 0
-        for txt_file in Path("blood").glob("*.txt"):
-            data_bytes = (
-                txt_file.read_text(encoding="utf-8") + "\n"
-            ).encode("utf-8")
+
+        def write_line(line: str) -> None:
+            nonlocal total
             remaining = TRAINING_LIMIT_BYTES - total
             if remaining <= 0:
-                break
-            tmp.write(
-                data_bytes[:remaining].decode("utf-8", errors="ignore")
-            )
-            total += min(len(data_bytes), remaining)
-        for line in memory.get_messages():
-            remaining = TRAINING_LIMIT_BYTES - total
-            if remaining <= 0:
-                break
+                return
             data_bytes = (line + "\n").encode("utf-8")
-            tmp.write(
-                data_bytes[:remaining].decode("utf-8", errors="ignore")
-            )
+            tmp.write(data_bytes[:remaining].decode("utf-8", errors="ignore"))
             total += min(len(data_bytes), remaining)
+
+        for directory in ("blood", "datasets"):
+            dir_path = Path(directory)
+            if not dir_path.exists():
+                continue
+            for file in dir_path.glob("*"):
+                if file.suffix.lower() in {".txt", ".md"}:
+                    write_line(file.read_text(encoding="utf-8"))
+                elif file.suffix.lower() == ".csv":
+                    with file.open(newline="", encoding="utf-8") as f:
+                        reader = csv.reader(f)
+                        for row in reader:
+                            text_cells: list[str] = []
+                            for cell in row:
+                                cell = cell.strip()
+                                if not cell:
+                                    continue
+                                try:
+                                    float(cell)
+                                except ValueError:
+                                    text_cells.append(cell)
+                            if text_cells:
+                                write_line(" ".join(text_cells))
+
+        for line in memory.get_messages():
+            write_line(line)
+
         if latest_line:
-            remaining = TRAINING_LIMIT_BYTES - total
-            if remaining > 0:
-                data_bytes = (latest_line + "\n").encode("utf-8")
-                tmp.write(
-                    data_bytes[:remaining].decode("utf-8", errors="ignore")
-                )
+            write_line(latest_line)
+
     return Path(tmp.name)
 
 
