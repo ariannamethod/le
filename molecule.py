@@ -18,7 +18,6 @@ from telegram.ext import (
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
-DATASET_PATH: Path | None = None
 TRAINING_TASK: asyncio.Task | None = None
 
 
@@ -38,14 +37,14 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 "Model not trained yet. Send /train to start training."
             )
         return
-
+    dataset_path = build_dataset()
     try:
         result = subprocess.run(
             [
                 "python",
                 "le.py",
                 "-i",
-                str(DATASET_PATH),
+                str(dataset_path),
                 "-o",
                 "names",
                 "--sample-only",
@@ -62,16 +61,19 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception as exc:
         logging.exception("Sampling error")
         reply = f"Error: {exc}"
+    finally:
+        dataset_path.unlink(missing_ok=True)
     await update.message.reply_text(reply)
 
 
 async def run_training(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> None:
+    dataset_path = build_dataset()
     try:
         proc = await asyncio.create_subprocess_exec(
             "python",
             "le.py",
             "-i",
-            str(DATASET_PATH),
+            str(dataset_path),
             "-o",
             "names",
             "--max-steps",
@@ -103,6 +105,8 @@ async def run_training(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> None
         await context.bot.send_message(
             chat_id=chat_id, text="Training error."
         )
+    finally:
+        dataset_path.unlink(missing_ok=True)
 
 
 async def train(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -125,8 +129,6 @@ def build_dataset() -> Path:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
-    global DATASET_PATH
-    DATASET_PATH = build_dataset()
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("train", train))
