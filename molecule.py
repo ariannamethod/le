@@ -1,5 +1,7 @@
+import logging
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -71,6 +73,11 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 def main() -> None:
+    if not TOKEN:
+        logging.error(
+            "TELEGRAM_TOKEN is not set. Please define it in a .env file."
+        )
+        sys.exit(1)
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(
