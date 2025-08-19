@@ -1,5 +1,6 @@
 import os
 import subprocess
+import tempfile
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -15,6 +16,7 @@ from telegram.ext import (
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
+DATASET_PATH: Path | None = None
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -25,30 +27,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
-        model_path = Path("names/model.pt")
-        if not model_path.exists():
-            subprocess.run(
-                [
-                    "python",
-                    "le.py",
-                    "-i",
-                    "blood/lines01.txt",
-                    "-o",
-                    "names",
-                    "--max-steps",
-                    "200",
-                ],
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=600,
-            )
         result = subprocess.run(
             [
                 "python",
                 "le.py",
                 "-i",
-                "blood/lines01.txt",
+                str(DATASET_PATH),
                 "-o",
                 "names",
                 "--sample-only",
@@ -70,7 +54,35 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(reply)
 
 
+def build_dataset() -> Path:
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as tmp:
+        for txt_file in Path("blood").glob("*.txt"):
+            tmp.write(txt_file.read_text())
+            tmp.write("\n")
+    return Path(tmp.name)
+
+
 def main() -> None:
+    global DATASET_PATH
+    DATASET_PATH = build_dataset()
+    model_path = Path("names/model.pt")
+    if not model_path.exists():
+        subprocess.run(
+            [
+                "python",
+                "le.py",
+                "-i",
+                str(DATASET_PATH),
+                "-o",
+                "names",
+                "--max-steps",
+                "200",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=600,
+        )
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(
