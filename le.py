@@ -31,6 +31,13 @@ from memory import Memory
 # force CPU execution
 DEVICE = torch.device('cpu')
 
+QUIET = False
+
+
+def qprint(*args, **kwargs):
+    if not QUIET:
+        print(*args, **kwargs)
+
 # -----------------------------------------------------------------------------
 
 @dataclass
@@ -132,7 +139,7 @@ class Transformer(nn.Module):
 
         # report number of parameters (note we don't count the decoder parameters in lm_head)
         n_params = sum(p.numel() for p in self.transformer.parameters())
-        print("number of parameters: %.2fM" % (n_params/1e6,))
+        qprint("number of parameters: %.2fM" % (n_params/1e6,))
 
     def get_block_size(self):
         return self.block_size
@@ -490,12 +497,12 @@ def print_samples(num=20, return_samples=False):
             new_samples.append(word_samp)
     if return_samples:
         return samples
-    print('-'*80)
+    qprint('-'*80)
     for lst, desc in [(train_samples, 'in train'), (test_samples, 'in test'), (new_samples, 'new')]:
-        print(f"{len(lst)} samples that are {desc}:")
+        qprint(f"{len(lst)} samples that are {desc}:")
         for word in lst:
-            print(word)
-    print('-'*80)
+            qprint(word)
+    qprint('-'*80)
 
 @torch.inference_mode()
 def evaluate(model, dataset, batch_size=50, max_batches=None):
@@ -606,18 +613,18 @@ def create_datasets(input_path):
                         words.append(line)
     chars = sorted(list(set(''.join(words)))) # all the possible characters
     max_word_length = max(len(w) for w in words) if words else 0
-    print(f"number of examples in the dataset: {len(words)}")
-    print(f"max word length: {max_word_length}")
-    print(f"number of unique characters in the vocabulary: {len(chars)}")
-    print("vocabulary:")
-    print(''.join(chars))
+    qprint(f"number of examples in the dataset: {len(words)}")
+    qprint(f"max word length: {max_word_length}")
+    qprint(f"number of unique characters in the vocabulary: {len(chars)}")
+    qprint("vocabulary:")
+    qprint(''.join(chars))
 
     # partition the input data into a training and the test set
     test_set_size = min(1000, int(len(words) * 0.1)) # 10% of the training set, or up to 1000 examples
     rp = torch.randperm(len(words)).tolist()
     train_words = [words[i] for i in rp[:-test_set_size]]
     test_words = [words[i] for i in rp[-test_set_size:]]
-    print(f"split up the dataset into {len(train_words)} training examples and {len(test_words)} test examples")
+    qprint(f"split up the dataset into {len(train_words)} training examples and {len(test_words)} test examples")
 
     # wrap in dataset objects
     train_dataset = CharDataset(train_words, chars, max_word_length)
@@ -670,8 +677,11 @@ if __name__ == '__main__':
     parser.add_argument('--batch-size', '-b', type=int, default=32, help="batch size during optimization")
     parser.add_argument('--learning-rate', '-l', type=float, default=5e-4, help="learning rate")
     parser.add_argument('--weight-decay', '-w', type=float, default=0.01, help="weight decay")
+    parser.add_argument('--quiet', action='store_true', help="suppress non-sample output when used with --sample-only")
     args = parser.parse_args()
-    print(vars(args))
+    global QUIET
+    QUIET = args.quiet and args.sample_only
+    qprint(vars(args))
 
     # system inits
     torch.manual_seed(args.seed)
@@ -682,7 +692,7 @@ if __name__ == '__main__':
     train_dataset, test_dataset = create_datasets(args.input_file)
     vocab_size = train_dataset.get_vocab_size()
     block_size = train_dataset.get_output_length()
-    print(f"dataset determined that: {vocab_size=}, {block_size=}")
+    qprint(f"dataset determined that: {vocab_size=}, {block_size=}")
 
     memory = Memory()
     data_hash = Memory.hash_file(args.input_file)
@@ -708,21 +718,21 @@ if __name__ == '__main__':
     else:
         raise ValueError(f'model type {args.type} is not recognized')
     model.to(DEVICE)
-    print(f"model #params: {sum(p.numel() for p in model.parameters())}")
+    qprint(f"model #params: {sum(p.numel() for p in model.parameters())}")
     model_path = os.path.join(args.work_dir, 'model.pt')
     if args.resume or args.sample_only or skip_training:
         if os.path.exists(model_path):
-            print("resuming from existing model in the workdir")
+            qprint("resuming from existing model in the workdir")
             model.load_state_dict(torch.load(model_path))
         else:
-            print("no existing model found in the workdir")
+            qprint("no existing model found in the workdir")
     if args.sample_only:
         for sample in print_samples(num=args.num_samples, return_samples=True):
             print(sample)
         sys.exit()
 
     if skip_training:
-        print('model already trained on this data hash; skipping training')
+        qprint('model already trained on this data hash; skipping training')
     else:
         optimizer = torch.optim.AdamW(
             model.parameters(),
