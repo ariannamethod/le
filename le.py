@@ -18,6 +18,7 @@ from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from memory import Memory
+import metrics
 
 # force CPU execution
 DEVICE = torch.device('cpu')
@@ -514,6 +515,7 @@ def chat(model, data_path, memory):
     """interactive loop that fine-tunes on the dataset and answers the user"""
     os.makedirs('logs', exist_ok=True)
     log_path = os.path.join('logs', 'leconvo.txt')
+    res_step = 0
     while True:
         train_dataset, _ = create_datasets(data_path)
         optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
@@ -540,6 +542,9 @@ def chat(model, data_path, memory):
         response = train_dataset.decode(out)
         print(f'le: {response}')
         memory.save_conversation(user, response)
+        resonance = metrics.compute_resonance(model, train_dataset, user, response)
+        metrics.log_resonance(resonance, res_step)
+        res_step += 1
         with open(log_path, 'a', encoding='utf-8') as f:
             f.write(f'User: {user}\nLE: {response}\n')
 
@@ -677,6 +682,7 @@ if __name__ == '__main__':
     torch.manual_seed(args.seed)
     os.makedirs(args.work_dir, exist_ok=True)
     writer = SummaryWriter(log_dir=args.work_dir)
+    metrics.set_writer(writer)
 
     # init datasets
     train_dataset, test_dataset = create_datasets(args.input_file)
@@ -758,6 +764,7 @@ if __name__ == '__main__':
 
         best_loss = None
         step = 0
+        epoch = 0
         while True:
 
             t0 = time.time()
@@ -791,9 +798,8 @@ if __name__ == '__main__':
                 test_loss = evaluate(
                     model, test_dataset, batch_size=100, max_batches=10
                 )
-                writer.add_scalar("Loss/train", train_loss, step)
-                writer.add_scalar("Loss/test", test_loss, step)
-                writer.flush()
+                metrics.log_loss("train", train_loss, epoch)
+                metrics.log_loss("test", test_loss, epoch)
                 print(
                     f"step {step} train loss: {train_loss} test loss: {test_loss}"
                 )
@@ -805,6 +811,7 @@ if __name__ == '__main__':
                     )
                     torch.save(model.state_dict(), out_path)
                     best_loss = test_loss
+                epoch += 1
 
             # sample from the model
             if step > 0 and step % 200 == 0:
