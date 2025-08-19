@@ -21,6 +21,7 @@ from inhale_exhale import inhale, exhale
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
+WORK_DIR = Path(os.getenv("LE_WORK_DIR", "names"))
 TRAINING_TASK: asyncio.Task | None = None
 
 
@@ -32,7 +33,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     question = update.message.text
-    model_path = Path("names/model.pt")
+    model_path = WORK_DIR / "model.pt"
     if not model_path.exists():
         if TRAINING_TASK and not TRAINING_TASK.done():
             await update.message.reply_text(
@@ -52,8 +53,8 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 "le.py",
                 "-i",
                 str(dataset_path),
-                "-o",
-                "names",
+                "--work-dir",
+                str(WORK_DIR),
                 "--sample-only",
                 "--num-samples",
                 "1",
@@ -88,8 +89,8 @@ async def run_training(
             "le.py",
             "-i",
             str(dataset_path),
-            "-o",
-            "names",
+            "--work-dir",
+            str(WORK_DIR),
             "--max-steps",
             "200",
             stdout=asyncio.subprocess.PIPE,
