@@ -26,7 +26,8 @@ async def test_respond_produces_one_line(monkeypatch, tmp_path):
     dataset_file.write_text("hello\n")
     monkeypatch.setattr(molecule, "build_dataset", lambda: dataset_file)
 
-    monkeypatch.setattr(molecule, "inhale", lambda q, r: None)
+    monkeypatch.setattr(molecule.memory, "record_message", lambda q, r: None)
+    monkeypatch.setattr(molecule.memory, "update_repo_hash", lambda: None)
 
     async def dummy_exhale(chat_id, context):
         return None
@@ -68,6 +69,8 @@ async def test_respond_produces_one_line(monkeypatch, tmp_path):
     assert "--quiet" in captured["args"]
     assert "--work-dir" in captured["args"]
     assert str(names_dir) in captured["args"]
+    assert "--prompt" in captured["args"]
+    assert "hi" in captured["args"]
     assert "\n" not in replies[0]
 
 
@@ -80,7 +83,8 @@ async def test_respond_handles_timeout(monkeypatch, tmp_path):
     dataset_file = tmp_path / "dataset.txt"
     dataset_file.write_text("hello\n")
     monkeypatch.setattr(molecule, "build_dataset", lambda: dataset_file)
-    monkeypatch.setattr(molecule, "inhale", lambda q, r: None)
+    monkeypatch.setattr(molecule.memory, "record_message", lambda q, r: None)
+    monkeypatch.setattr(molecule.memory, "update_repo_hash", lambda: None)
 
     async def dummy_exhale(chat_id, context):
         return None
@@ -142,7 +146,8 @@ async def test_respond_returns_line_when_model_missing(monkeypatch, tmp_path):
     molecule.TRAINING_TASK = None
 
     monkeypatch.setattr(molecule.random, "choice", lambda seq: seq[0])
-    monkeypatch.setattr(molecule, "inhale", lambda q, r: None)
+    monkeypatch.setattr(molecule.memory, "record_message", lambda q, r: None)
+    monkeypatch.setattr(molecule.memory, "update_repo_hash", lambda: None)
 
     async def dummy_exhale(chat_id, context):
         return None

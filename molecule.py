@@ -16,7 +16,7 @@ from telegram.ext import (
     filters,
 )
 
-from inhale_exhale import inhale, exhale, memory
+from inhale_exhale import exhale, memory
 
 load_dotenv()
 
@@ -81,7 +81,8 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         finally:
             dataset_path.unlink(missing_ok=True)
         await update.message.reply_text(reply)
-        inhale(question, reply)
+        memory.record_message(question, reply)
+        memory.update_repo_hash()
         await exhale(update.effective_chat.id, context)
         return
     dataset_path = build_dataset()
@@ -100,6 +101,8 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "--seed",
             str(seed),
             "--quiet",
+            "--prompt",
+            question,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -129,7 +132,8 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     finally:
         dataset_path.unlink(missing_ok=True)
     await update.message.reply_text(reply)
-    inhale(question, reply)
+    memory.record_message(question, reply)
+    memory.update_repo_hash()
     await exhale(update.effective_chat.id, context)
 
 

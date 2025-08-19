@@ -10,7 +10,6 @@ import time
 import math
 import argparse
 from dataclasses import dataclass
-from typing import List
 
 import torch
 import torch.nn as nn
@@ -321,7 +320,6 @@ class RNN(nn.Module):
         return self.block_size
 
     def forward(self, idx, targets=None):
-        device = idx.device
         b, t = idx.size()
 
         # embed all the integers up front and all at once for efficiency
@@ -466,15 +464,17 @@ def print_samples(num=20, return_samples=False):
     suppresses all printing. Otherwise it behaves as before and prints a nice
     summary.
     """
-    X_init = torch.zeros(num, 1, dtype=torch.long).to(DEVICE)
+    prompt_tokens = [train_dataset.stoi.get(ch, 0) for ch in args.prompt]
+    context = [0] + prompt_tokens
+    X_init = torch.tensor(context, dtype=torch.long)[None, :].repeat(num, 1).to(DEVICE)
     top_k = args.top_k if args.top_k != -1 else None
-    steps = train_dataset.get_output_length() - 1  # -1 because we already start with <START> token (index 0)
+    steps = max(train_dataset.get_output_length() - X_init.size(1), 0)
     X_samp = generate(model, X_init, steps, top_k=top_k, do_sample=True).to('cpu')
     train_samples, test_samples, new_samples = [], [], []
     samples = []
     for i in range(X_samp.size(0)):
         # get the i'th row of sampled integers, as python list
-        row = X_samp[i, 1:].tolist()  # note: we need to crop out the first <START> token
+        row = X_samp[i, 1 + len(prompt_tokens):].tolist()
         # token 0 is the <STOP> token, so we crop the output sequence at that point
         crop_index = row.index(0) if 0 in row else len(row)
         row = row[:crop_index]
@@ -659,6 +659,7 @@ if __name__ == '__main__':
     # sampling
     parser.add_argument('--num-samples', type=int, default=1, help="number of samples to draw when using --sample-only")
     parser.add_argument('--top-k', type=int, default=-1, help="top-k for sampling, -1 means no top-k")
+    parser.add_argument('--prompt', type=str, default='', help="text prompt to start generation")
     # model
     parser.add_argument('--type', type=str, default='transformer', help="model class type to use, bigram|mlp|rnn|gru|bow|transformer")
     parser.add_argument('--n-layer', type=int, default=4, help="number of layers")
@@ -671,7 +672,6 @@ if __name__ == '__main__':
     parser.add_argument('--weight-decay', '-w', type=float, default=0.01, help="weight decay")
     parser.add_argument('--quiet', action='store_true', help="suppress non-sample output when used with --sample-only")
     args = parser.parse_args()
-    global QUIET
     QUIET = args.quiet and args.sample_only
     qprint(vars(args))
 
@@ -720,7 +720,7 @@ if __name__ == '__main__':
             qprint("no existing model found in the workdir")
     if args.sample_only:
         for sample in print_samples(num=args.num_samples, return_samples=True):
-            print(sample)
+            print((args.prompt or '') + sample)
         sys.exit()
 
     if skip_training:
