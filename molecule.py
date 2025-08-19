@@ -22,6 +22,7 @@ load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 WORK_DIR = Path(os.getenv("LE_WORK_DIR", "names"))
+DATASET_LIMIT = 20 * 1024
 SAMPLE_TIMEOUT = int(os.getenv("LE_SAMPLE_TIMEOUT", "120"))
 TRAINING_TASK: asyncio.Task | None = None
 
@@ -177,11 +178,19 @@ async def train(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 def build_dataset() -> Path:
     with tempfile.NamedTemporaryFile(
-        mode="w", delete=False, suffix=".txt"
+        mode="wb", delete=False, suffix=".txt"
     ) as tmp:
+        bytes_written = 0
         for txt_file in Path("blood").glob("*.txt"):
-            tmp.write(txt_file.read_text())
-            tmp.write("\n")
+            data = txt_file.read_bytes() + b"\n"
+            if bytes_written + len(data) > DATASET_LIMIT:
+                remaining = DATASET_LIMIT - bytes_written
+                if remaining > 0:
+                    tmp.write(data[:remaining])
+                    bytes_written += remaining
+                break
+            tmp.write(data)
+            bytes_written += len(data)
     return Path(tmp.name)
 
 
