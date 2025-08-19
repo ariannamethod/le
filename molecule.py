@@ -182,18 +182,16 @@ def build_dataset() -> Path:
     ) as tmp:
         total = 0
         for txt_file in Path("blood").glob("*.txt"):
-            data = txt_file.read_text(encoding="utf-8") + "\n"
-            encoded = data.encode("utf-8")
-            if total + len(encoded) > TRAINING_LIMIT_BYTES:
-                remaining = TRAINING_LIMIT_BYTES - total
-                if remaining > 0:
-                    partial = encoded[:remaining].decode(
-                        "utf-8", errors="ignore"
-                    )
-                    tmp.write(partial)
+            data_bytes = (
+                txt_file.read_text(encoding="utf-8") + "\n"
+            ).encode("utf-8")
+            remaining = TRAINING_LIMIT_BYTES - total
+            if remaining <= 0:
                 break
-            tmp.write(data)
-            total += len(encoded)
+            tmp.write(
+                data_bytes[:remaining].decode("utf-8", errors="ignore")
+            )
+            total += min(len(data_bytes), remaining)
     return Path(tmp.name)
 
 
