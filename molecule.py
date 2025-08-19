@@ -16,6 +16,8 @@ from telegram.ext import (
     filters,
 )
 
+from inhale_exhale import inhale, exhale
+
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -29,6 +31,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    question = update.message.text
     model_path = Path("names/model.pt")
     if not model_path.exists():
         if TRAINING_TASK and not TRAINING_TASK.done():
@@ -72,6 +75,8 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     finally:
         dataset_path.unlink(missing_ok=True)
     await update.message.reply_text(reply)
+    inhale(question, reply)
+    await exhale(update.effective_chat.id, context)
 
 
 async def run_training(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> None:
