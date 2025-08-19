@@ -24,6 +24,7 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 WORK_DIR = Path(os.getenv("LE_WORK_DIR", "names"))
 SAMPLE_TIMEOUT = int(os.getenv("LE_SAMPLE_TIMEOUT", "120"))
 TRAINING_TASK: asyncio.Task | None = None
+TRAINING_LIMIT_BYTES = 20 * 1024
 
 
 def warmup_model() -> None:
@@ -177,11 +178,22 @@ async def train(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 def build_dataset() -> Path:
     with tempfile.NamedTemporaryFile(
-        mode="w", delete=False, suffix=".txt"
+        mode="w", delete=False, suffix=".txt", encoding="utf-8"
     ) as tmp:
+        total = 0
         for txt_file in Path("blood").glob("*.txt"):
-            tmp.write(txt_file.read_text())
-            tmp.write("\n")
+            data = txt_file.read_text(encoding="utf-8") + "\n"
+            encoded = data.encode("utf-8")
+            if total + len(encoded) > TRAINING_LIMIT_BYTES:
+                remaining = TRAINING_LIMIT_BYTES - total
+                if remaining > 0:
+                    partial = encoded[:remaining].decode(
+                        "utf-8", errors="ignore"
+                    )
+                    tmp.write(partial)
+                break
+            tmp.write(data)
+            total += len(encoded)
     return Path(tmp.name)
 
 
