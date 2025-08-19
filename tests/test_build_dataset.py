@@ -33,3 +33,31 @@ def test_build_dataset_includes_memory_and_question(tmp_path, monkeypatch):
     finally:
         dataset_path.unlink()
         mem.close()
+
+
+def test_build_dataset_reads_various_file_types(tmp_path, monkeypatch):
+    blood_dir = tmp_path / "blood"
+    blood_dir.mkdir()
+    (blood_dir / "b.txt").write_text("blood text")
+
+    datasets_dir = tmp_path / "datasets"
+    datasets_dir.mkdir()
+    (datasets_dir / "d.md").write_text("dataset md")
+    (datasets_dir / "d.csv").write_text("num,text\n1,hello\n2,world\n")
+
+    mem = Memory(str(tmp_path / "memory.db"))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(molecule, "memory", mem)
+
+    dataset_path = molecule.build_dataset()
+    try:
+        content = dataset_path.read_text(encoding="utf-8")
+        lines = content.splitlines()
+        assert "blood text" in lines
+        assert "dataset md" in lines
+        assert "hello" in lines
+        assert "world" in lines
+        assert "1" not in content and "2" not in content
+    finally:
+        dataset_path.unlink()
+        mem.close()
