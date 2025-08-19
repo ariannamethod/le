@@ -456,7 +456,7 @@ def generate(model, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k
 
     return idx
 
-def print_samples(num=10):
+def print_samples(num=20):
     """ samples from the model and pretty prints the decoded samples """
     X_init = torch.zeros(num, 1, dtype=torch.long).to(args.device)
     top_k = args.top_k if args.top_k != -1 else None
@@ -500,6 +500,38 @@ def evaluate(model, dataset, batch_size=50, max_batches=None):
     model.train() # reset model back to training mode
     return mean_loss
 
+def chat(model, data_path):
+    """interactive loop that fine-tunes on the dataset and answers the user"""
+    os.makedirs('logs', exist_ok=True)
+    log_path = os.path.join('logs', 'leconvo.txt')
+    while True:
+        train_dataset, _ = create_datasets(data_path)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
+        loader = InfiniteDataLoader(train_dataset, batch_size=32, num_workers=0)
+        try:
+            user = input('you: ')
+        except EOFError:
+            break
+        if user is None or user.strip() == '':
+            break
+        for _ in range(20):
+            X, Y = [t.to(args.device) for t in loader.next()]
+            logits, loss = model(X, Y)
+            model.zero_grad(set_to_none=True)
+            loss.backward()
+            optimizer.step()
+        context = [train_dataset.stoi.get(ch, 0) for ch in user]
+        x = torch.tensor([[0] + context], dtype=torch.long).to(args.device)
+        y = generate(model, x, train_dataset.get_output_length(), do_sample=True,
+                     top_k=args.top_k if args.top_k != -1 else None).to('cpu')
+        out = y[0, len(context)+1:].tolist()
+        if 0 in out:
+            out = out[:out.index(0)]
+        response = train_dataset.decode(out)
+        print(f'le: {response}')
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(f'User: {user}\nLE: {response}\n')
+
 # -----------------------------------------------------------------------------
 # helper functions for creating the training and test Datasets that emit words
 
@@ -542,16 +574,24 @@ class CharDataset(Dataset):
         y[len(ix)+1:] = -1 # index -1 will mask the loss at the inactive locations
         return x, y
 
-def create_datasets(input_file):
+def create_datasets(input_path):
 
-    # preprocessing of the input text file
-    with open(input_file, 'r') as f:
-        data = f.read()
-    words = data.splitlines()
-    words = [w.strip() for w in words] # get rid of any leading or trailing white space
-    words = [w for w in words if w] # get rid of any empty strings
+    # gather all lines from every file in the directory of input_path
+    if os.path.isdir(input_path):
+        files = [os.path.join(input_path, f) for f in sorted(os.listdir(input_path))]
+    else:
+        directory = os.path.dirname(input_path) or '.'
+        files = [os.path.join(directory, f) for f in sorted(os.listdir(directory))]
+    words = []
+    for fname in files:
+        if os.path.isfile(fname):
+            with open(fname, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        words.append(line)
     chars = sorted(list(set(''.join(words)))) # all the possible characters
-    max_word_length = max(len(w) for w in words)
+    max_word_length = max(len(w) for w in words) if words else 0
     print(f"number of examples in the dataset: {len(words)}")
     print(f"max word length: {max_word_length}")
     print(f"number of unique characters in the vocabulary: {len(chars)}")
@@ -594,14 +634,14 @@ class InfiniteDataLoader:
 if __name__ == '__main__':
 
     # parse command line args
-    parser = argparse.ArgumentParser(description="Make More")
+    parser = argparse.ArgumentParser(description="LE")
     # system/input/output
-    parser.add_argument('--input-file', '-i', type=str, default='names.txt', help="input file with things one per line")
+    parser.add_argument('--input-file', '-i', type=str, default='blood/lines01.txt', help="seed data file inside the blood directory")
     parser.add_argument('--work-dir', '-o', type=str, default='out', help="output working directory")
     parser.add_argument('--resume', action='store_true', help="when this flag is used, we will resume optimization from existing model in the workdir")
     parser.add_argument('--sample-only', action='store_true', help="just sample from the model and quit, don't train")
     parser.add_argument('--num-workers', '-n', type=int, default=4, help="number of data workers for both train/test")
-    parser.add_argument('--max-steps', type=int, default=-1, help="max number of optimization steps to run for, or -1 for infinite.")
+    parser.add_argument('--max-steps', type=int, default=200, help="max number of optimization steps to run for, or -1 for infinite.")
     parser.add_argument('--device', type=str, default='cpu', help="device to use for compute, examples: cpu|cuda|cuda:2|mps")
     parser.add_argument('--seed', type=int, default=3407, help="seed")
     # sampling
@@ -710,10 +750,11 @@ if __name__ == '__main__':
 
         # sample from the model
         if step > 0 and step % 200 == 0:
-            print_samples(num=10)
+            print_samples()
 
         step += 1
         # termination conditions
         if args.max_steps >= 0 and step >= args.max_steps:
             break
 
+    chat(model, args.input_file)
