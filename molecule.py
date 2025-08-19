@@ -35,7 +35,9 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     model_path = Path("names/model.pt")
     if not model_path.exists():
         if TRAINING_TASK and not TRAINING_TASK.done():
-            await update.message.reply_text("Training in progress. Please wait.")
+            await update.message.reply_text(
+                "Training in progress. Please wait."
+            )
         else:
             await update.message.reply_text(
                 "Model not trained yet. Send /train to start training."
@@ -74,7 +76,9 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await exhale(update.effective_chat.id, context)
 
 
-async def run_training(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def run_training(
+    chat_id: int | None, context: ContextTypes.DEFAULT_TYPE | None
+) -> None:
     dataset_path = build_dataset()
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -90,29 +94,35 @@ async def run_training(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> None
             stderr=asyncio.subprocess.PIPE,
         )
         try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=600)
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=600
+            )
         except asyncio.TimeoutError:
             proc.kill()
             await proc.communicate()
             logging.exception("Training timed out")
-            await context.bot.send_message(
-                chat_id=chat_id, text="Training timed out."
-            )
+            if context and chat_id is not None:
+                await context.bot.send_message(
+                    chat_id=chat_id, text="Training timed out."
+                )
             return
         if proc.returncode == 0:
-            await context.bot.send_message(
-                chat_id=chat_id, text="Training completed."
-            )
+            if context and chat_id is not None:
+                await context.bot.send_message(
+                    chat_id=chat_id, text="Training completed."
+                )
         else:
             logging.error("Training failed: %s", stderr.decode())
-            await context.bot.send_message(
-                chat_id=chat_id, text="Training failed."
-            )
+            if context and chat_id is not None:
+                await context.bot.send_message(
+                    chat_id=chat_id, text="Training failed."
+                )
     except Exception:
         logging.exception("Training error")
-        await context.bot.send_message(
-            chat_id=chat_id, text="Training error."
-        )
+        if context and chat_id is not None:
+            await context.bot.send_message(
+                chat_id=chat_id, text="Training error."
+            )
     finally:
         dataset_path.unlink(missing_ok=True)
 
@@ -128,7 +138,9 @@ async def train(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 def build_dataset() -> Path:
-    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as tmp:
+    with tempfile.NamedTemporaryFile(
+        mode="w", delete=False, suffix=".txt"
+    ) as tmp:
         for txt_file in Path("blood").glob("*.txt"):
             tmp.write(txt_file.read_text())
             tmp.write("\n")
