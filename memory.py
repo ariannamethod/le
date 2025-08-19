@@ -12,6 +12,16 @@ class Memory:
         self.conn = sqlite3.connect(path)
         self._init_db()
 
+    def close(self) -> None:
+        """Close the underlying database connection."""
+        self.conn.close()
+
+    def __enter__(self) -> "Memory":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
     def _init_db(self) -> None:
         cur = self.conn.cursor()
         cur.execute(
@@ -55,7 +65,7 @@ class Memory:
         self.save_conversation(question, answer)
 
     def update_repo_hash(self, repo_path: str | Path = ".") -> None:
-        """Compute SHA256 for every file and flag training if anything changed."""
+        """Compute file hashes and flag training when files change."""
         repo = Path(repo_path)
         changed = False
         db_path = Path(self.conn.execute("PRAGMA database_list").fetchone()[2])
