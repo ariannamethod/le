@@ -660,8 +660,14 @@ if __name__ == '__main__':
     print(vars(args))
 
     # system inits
+    # ensure we fall back to CPU if CUDA is unavailable
+    if args.device.startswith('cuda') and not torch.cuda.is_available():
+        print("CUDA is not available, falling back to CPU.")
+        args.device = 'cpu'
+
     torch.manual_seed(args.seed)
-    torch.cuda.manual_seed_all(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
     os.makedirs(args.work_dir, exist_ok=True)
     writer = SummaryWriter(log_dir=args.work_dir)
 
@@ -725,7 +731,7 @@ if __name__ == '__main__':
         optimizer.step()
 
         # wait for all CUDA work on the GPU to finish then calculate iteration time taken
-        if args.device.startswith('cuda'):
+        if args.device.startswith('cuda') and torch.cuda.is_available():
             torch.cuda.synchronize()
         t1 = time.time()
 
