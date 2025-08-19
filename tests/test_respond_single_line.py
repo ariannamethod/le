@@ -5,6 +5,14 @@ import pytest
 import molecule
 
 
+async def _noop_run_training(chat_id, context):
+    return None
+
+
+molecule.run_training = _noop_run_training
+molecule.TRAINING_TASK = None
+
+
 @pytest.mark.asyncio
 async def test_respond_produces_one_line(monkeypatch, tmp_path):
     names_dir = tmp_path / "names"
@@ -26,8 +34,10 @@ async def test_respond_produces_one_line(monkeypatch, tmp_path):
 
     def fake_run(args, **kwargs):
         captured['args'] = args
+
         class Res:
             stdout = "sample\n"
+
         return Res()
     monkeypatch.setattr(molecule.subprocess, "run", fake_run)
 

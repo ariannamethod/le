@@ -1,10 +1,28 @@
 import asyncio
 import logging
+from pathlib import Path
 
 from memory import Memory
 
+MODEL_PATH = Path("names/model.pt")
+
 # Global memory instance
 memory = Memory()
+
+
+def _startup_training_check() -> None:
+    """Schedule training at startup if the model file is missing."""
+    if not MODEL_PATH.exists():
+        import molecule  # Local import to avoid circular dependency
+
+        logging.info("Model file missing; starting initial training")
+        molecule.TRAINING_TASK = asyncio.create_task(
+            molecule.run_training(None, None)
+        )
+
+
+asyncio.get_event_loop().call_soon(_startup_training_check)
+
 
 def inhale(question: str, answer: str) -> None:
     """Record the latest conversation and update repository hash."""
@@ -22,4 +40,3 @@ async def exhale(chat_id: int, context) -> None:
                 molecule.run_training(chat_id, context)
             )
             memory.set_meta("needs_training", "0")
-
