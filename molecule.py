@@ -66,17 +66,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    global TRAINING_TASK
     question = update.message.text
     model_path = WORK_DIR / "model.pt"
     if not model_path.exists():
-        if TRAINING_TASK and not TRAINING_TASK.done():
-            await update.message.reply_text(
-                "Training in progress. Please wait."
-            )
-        else:
-            await update.message.reply_text(
-                "Model not trained yet. Send /train to start training."
-            )
+        if TRAINING_TASK is None or TRAINING_TASK.done():
+            TRAINING_TASK = asyncio.create_task(run_training(None, None))
+        await update.message.reply_text(
+            "Модель запускается, попробуйте позже"
+        )
         return
     dataset_path = build_dataset()
     try:
