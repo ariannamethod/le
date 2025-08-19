@@ -80,31 +80,40 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     dataset_path = build_dataset()
     try:
         seed = random.randint(0, 2**31 - 1)
-        result = subprocess.run(
-            [
-                "python",
-                "le.py",
-                "-i",
-                str(dataset_path),
-                "--work-dir",
-                str(WORK_DIR),
-                "--sample-only",
-                "--num-samples",
-                "1",
-                "--seed",
-                str(seed),
-                "--quiet",
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=SAMPLE_TIMEOUT,
+        proc = await asyncio.create_subprocess_exec(
+            "python",
+            "le.py",
+            "-i",
+            str(dataset_path),
+            "--work-dir",
+            str(WORK_DIR),
+            "--sample-only",
+            "--num-samples",
+            "1",
+            "--seed",
+            str(seed),
+            "--quiet",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
-        lines = [line for line in result.stdout.splitlines() if line.strip()]
-        reply = lines[-1] if lines else "No output from LE."
-    except subprocess.TimeoutExpired:
-        logging.exception("Sampling timed out")
-        reply = "Sampling timed out."
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=SAMPLE_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            logging.exception("Sampling timed out")
+            reply = "Sampling timed out."
+        else:
+            if proc.returncode == 0:
+                lines = [
+                    line for line in stdout.decode().splitlines() if line.strip()
+                ]
+                reply = lines[-1] if lines else "No output from LE."
+            else:
+                logging.error("Sampling failed: %s", stderr.decode())
+                reply = f"Error: Process exited with status {proc.returncode}"
     except Exception as exc:
         logging.exception("Sampling error")
         reply = f"Error: {exc}"
