@@ -1,10 +1,12 @@
 import asyncio
 import logging
+import os
 from pathlib import Path
 
 from memory import Memory
 
-MODEL_PATH = Path("names/model.pt")
+WORK_DIR = Path(os.getenv("LE_WORK_DIR", "names"))
+MODEL_PATH = WORK_DIR / "model.pt"
 
 # Global memory instance
 memory = Memory()
