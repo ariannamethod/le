@@ -16,7 +16,7 @@ from telegram.ext import (
     filters,
 )
 
-from inhale_exhale import inhale, exhale
+from inhale_exhale import inhale, exhale, memory
 
 load_dotenv()
 
@@ -115,7 +115,9 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         else:
             if proc.returncode == 0:
                 lines = [
-                    line for line in stdout.decode().splitlines() if line.strip()
+                    line
+                    for line in stdout.decode().splitlines()
+                    if line.strip()
                 ]
                 reply = lines[-1] if lines else "No output from LE."
             else:
@@ -219,8 +221,11 @@ def main() -> None:
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, respond)
     )
-    warmup_model()
-    app.run_polling()
+    try:
+        warmup_model()
+        app.run_polling()
+    finally:
+        memory.close()
 
 
 if __name__ == "__main__":
