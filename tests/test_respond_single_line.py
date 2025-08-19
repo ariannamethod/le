@@ -99,3 +99,50 @@ async def test_respond_handles_timeout(monkeypatch, tmp_path):
     await molecule.respond(update, None)
 
     assert replies == ["Sampling timed out."]
+
+
+@pytest.mark.asyncio
+async def test_respond_returns_line_when_model_missing(monkeypatch, tmp_path):
+    names_dir = tmp_path / "names"
+    names_dir.mkdir()
+    molecule.WORK_DIR = names_dir
+    monkeypatch.chdir(tmp_path)
+
+    dataset_file = tmp_path / "dataset.txt"
+    dataset_file.write_text("line1\nline2\n")
+    monkeypatch.setattr(molecule, "build_dataset", lambda: dataset_file)
+
+    started = {"flag": False}
+
+    async def dummy_run_training(chat_id, context):
+        started["flag"] = True
+
+    molecule.run_training = dummy_run_training
+    molecule.TRAINING_TASK = None
+
+    monkeypatch.setattr(molecule.random, "choice", lambda seq: seq[0])
+    monkeypatch.setattr(molecule, "inhale", lambda q, r: None)
+
+    async def dummy_exhale(chat_id, context):
+        return None
+
+    monkeypatch.setattr(molecule, "exhale", dummy_exhale)
+
+    replies = []
+
+    class DummyMessage:
+        text = "hi"
+
+        async def reply_text(self, text):
+            replies.append(text)
+
+    update = types.SimpleNamespace(
+        message=DummyMessage(), effective_chat=types.SimpleNamespace(id=1)
+    )
+
+    await molecule.respond(update, None)
+    assert replies == ["line1"]
+    assert molecule.TRAINING_TASK is not None
+    await molecule.TRAINING_TASK
+    assert started["flag"]
+    assert "\n" not in replies[0]

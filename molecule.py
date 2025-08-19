@@ -73,9 +73,16 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not model_path.exists():
         if TRAINING_TASK is None or TRAINING_TASK.done():
             TRAINING_TASK = asyncio.create_task(run_training(None, None))
-        await update.message.reply_text(
-            "Модель запускается, попробуйте позже"
-        )
+        dataset_path = build_dataset()
+        try:
+            data = dataset_path.read_text(encoding="utf-8").splitlines()
+            lines = [line.strip() for line in data if line.strip()]
+            reply = random.choice(lines) if lines else "No training data."
+        finally:
+            dataset_path.unlink(missing_ok=True)
+        await update.message.reply_text(reply)
+        inhale(question, reply)
+        await exhale(update.effective_chat.id, context)
         return
     dataset_path = build_dataset()
     try:
