@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+from datetime import datetime
 from pathlib import Path
 
 from memory import Memory
@@ -30,6 +31,14 @@ asyncio.get_event_loop().call_soon(_startup_training_check)
 def inhale(question: str, answer: str) -> None:
     """Record the latest conversation and update repository hash."""
     memory.record_message(question, answer)
+
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+    timestamp = datetime.utcnow().isoformat()
+    log_file = log_dir / "conversations.txt"
+    with log_file.open("a", encoding="utf-8") as fh:
+        fh.write(f"{timestamp}\t{question}\t{answer}\n")
+
     memory.update_repo_hash()
 
 
