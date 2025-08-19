@@ -38,6 +38,8 @@ def warmup_model() -> None:
             [
                 "python",
                 "le.py",
+                "--type",
+                "transformer",
                 "-i",
                 str(dataset_path),
                 "--work-dir",
@@ -90,6 +92,8 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         proc = await asyncio.create_subprocess_exec(
             "python",
             "le.py",
+            "--type",
+            "transformer",
             "-i",
             str(dataset_path),
             "--work-dir",
@@ -143,6 +147,8 @@ async def run_training(
         proc = await asyncio.create_subprocess_exec(
             "python",
             "le.py",
+            "--type",
+            "transformer",
             "-i",
             str(dataset_path),
             "--work-dir",
