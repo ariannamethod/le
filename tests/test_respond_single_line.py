@@ -1,4 +1,4 @@
-import subprocess
+import asyncio
 import types
 
 import pytest
@@ -34,14 +34,21 @@ async def test_respond_produces_one_line(monkeypatch, tmp_path):
 
     captured = {}
 
-    def fake_run(args, **kwargs):
-        captured['args'] = args
+    async def fake_exec(*args, **kwargs):
+        captured["args"] = args
 
-        class Res:
-            stdout = "noise\nsample\n\n"
+        class Proc:
+            returncode = 0
 
-        return Res()
-    monkeypatch.setattr(molecule.subprocess, "run", fake_run)
+            async def communicate(self):
+                return (b"noise\nsample\n\n", b"")
+
+            def kill(self):
+                pass
+
+        return Proc()
+
+    monkeypatch.setattr(molecule.asyncio, "create_subprocess_exec", fake_exec)
 
     replies = []
 
@@ -57,8 +64,8 @@ async def test_respond_produces_one_line(monkeypatch, tmp_path):
     await molecule.respond(update, None)
 
     assert replies == ["sample"]
-    assert "--num-samples" in captured['args'] and "1" in captured['args']
-    assert "--quiet" in captured['args']
+    assert "--num-samples" in captured["args"] and "1" in captured["args"]
+    assert "--quiet" in captured["args"]
     assert "--work-dir" in captured["args"]
     assert str(names_dir) in captured["args"]
     assert "\n" not in replies[0]
@@ -80,10 +87,24 @@ async def test_respond_handles_timeout(monkeypatch, tmp_path):
 
     monkeypatch.setattr(molecule, "exhale", dummy_exhale)
 
-    def fake_run(args, **kwargs):
-        raise subprocess.TimeoutExpired(cmd=args, timeout=1)
+    async def fake_exec(*args, **kwargs):
+        class Proc:
+            returncode = 0
 
-    monkeypatch.setattr(molecule.subprocess, "run", fake_run)
+            async def communicate(self):
+                return (b"", b"")
+
+            def kill(self):
+                pass
+
+        return Proc()
+
+    async def fake_wait_for(coro, timeout):
+        coro.close()
+        raise asyncio.TimeoutError
+
+    monkeypatch.setattr(molecule.asyncio, "create_subprocess_exec", fake_exec)
+    monkeypatch.setattr(molecule.asyncio, "wait_for", fake_wait_for)
 
     replies = []
 
