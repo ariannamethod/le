@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import os
 import subprocess
 import tempfile
@@ -17,6 +19,7 @@ load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 DATASET_PATH: Path | None = None
+TRAINING_TASK: asyncio.Task | None = None
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -26,6 +29,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    model_path = Path("names/model.pt")
+    if not model_path.exists():
+        if TRAINING_TASK and not TRAINING_TASK.done():
+            await update.message.reply_text("Training in progress. Please wait.")
+        else:
+            await update.message.reply_text(
+                "Model not trained yet. Send /train to start training."
+            )
+        return
+
     try:
         result = subprocess.run(
             [
@@ -43,15 +56,63 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             timeout=60,
         )
         lines = [
-            line for line in result.stdout.splitlines()
-            if line.strip()
+            line for line in result.stdout.splitlines() if line.strip()
         ]
-        reply = (
-            "\n".join(lines[-10:]) if lines else "No output from LE."
-        )
+        reply = "\n".join(lines[-10:]) if lines else "No output from LE."
     except Exception as exc:
+        logging.exception("Sampling error")
         reply = f"Error: {exc}"
     await update.message.reply_text(reply)
+
+
+async def run_training(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "python",
+            "le.py",
+            "-i",
+            str(DATASET_PATH),
+            "-o",
+            "names",
+            "--max-steps",
+            "200",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=600)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            logging.exception("Training timed out")
+            await context.bot.send_message(
+                chat_id=chat_id, text="Training timed out."
+            )
+            return
+        if proc.returncode == 0:
+            await context.bot.send_message(
+                chat_id=chat_id, text="Training completed."
+            )
+        else:
+            logging.error("Training failed: %s", stderr.decode())
+            await context.bot.send_message(
+                chat_id=chat_id, text="Training failed."
+            )
+    except Exception:
+        logging.exception("Training error")
+        await context.bot.send_message(
+            chat_id=chat_id, text="Training error."
+        )
+
+
+async def train(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    global TRAINING_TASK
+    if TRAINING_TASK and not TRAINING_TASK.done():
+        await update.message.reply_text("Training already in progress.")
+        return
+    await update.message.reply_text("Training started...")
+    chat_id = update.effective_chat.id
+    TRAINING_TASK = asyncio.create_task(run_training(chat_id, context))
 
 
 def build_dataset() -> Path:
@@ -63,28 +124,12 @@ def build_dataset() -> Path:
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO)
     global DATASET_PATH
     DATASET_PATH = build_dataset()
-    model_path = Path("names/model.pt")
-    if not model_path.exists():
-        subprocess.run(
-            [
-                "python",
-                "le.py",
-                "-i",
-                str(DATASET_PATH),
-                "-o",
-                "names",
-                "--max-steps",
-                "200",
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=600,
-        )
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("train", train))
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, respond)
     )
