@@ -17,10 +17,11 @@ def _startup_training_check() -> None:
     if not MODEL_PATH.exists():
         import molecule  # Local import to avoid circular dependency
 
-        logging.info("Model file missing; starting initial training")
-        molecule.TRAINING_TASK = asyncio.create_task(
-            molecule.run_training(None, None)
-        )
+        if molecule.TRAINING_TASK is None or molecule.TRAINING_TASK.done():
+            logging.info("Model file missing; starting initial training")
+            molecule.TRAINING_TASK = asyncio.create_task(
+                molecule.run_training(None, None)
+            )
 
 
 asyncio.get_event_loop().call_soon(_startup_training_check)
