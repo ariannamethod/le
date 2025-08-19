@@ -65,22 +65,32 @@ class Memory:
         self.save_conversation(question, answer)
 
     def update_repo_hash(self, repo_path: str | Path = ".") -> None:
-        """Compute file hashes and flag training when files change."""
+        """Compute file hashes and flag training when source files change.
+
+        Temporary artefacts such as logs or databases are ignored so that
+        only relevant source data and code trigger retraining.
+        """
+
         repo = Path(repo_path)
         changed = False
         db_path = Path(self.conn.execute("PRAGMA database_list").fetchone()[2])
+        ignored_dirs = {".git", "logs", "__pycache__", ".pytest_cache"}
+        ignored_names = {db_path.name, "memory.db"}
+
         for file in repo.rglob("*"):
-            if (
-                file.is_file()
-                and ".git" not in file.parts
-                and file != db_path
-            ):
-                digest = self.hash_file(str(file))
-                key = f"hash:{file.relative_to(repo)}"
-                if self.get_meta(key) != digest:
-                    logging.info("Hash for %s changed", file)
-                    self.set_meta(key, digest)
-                    changed = True
+            if not file.is_file():
+                continue
+            if any(part in ignored_dirs for part in file.parts):
+                continue
+            if file.name in ignored_names:
+                continue
+
+            digest = self.hash_file(str(file))
+            key = f"hash:{file.relative_to(repo)}"
+            if self.get_meta(key) != digest:
+                logging.info("Hash for %s changed", file)
+                self.set_meta(key, digest)
+                changed = True
         if changed:
             self.set_meta("needs_training", "1")
 

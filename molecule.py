@@ -151,35 +151,24 @@ async def run_training(
             stderr=asyncio.subprocess.PIPE,
         )
         try:
-            stdout, stderr = await asyncio.wait_for(
+            _, stderr = await asyncio.wait_for(
                 proc.communicate(), timeout=600
             )
         except asyncio.TimeoutError:
             proc.kill()
             await proc.communicate()
             logging.exception("Training timed out")
-            if context and chat_id is not None:
-                await context.bot.send_message(
-                    chat_id=chat_id, text="Training timed out."
-                )
             return
         if proc.returncode == 0:
+            memory.set_meta("needs_training", "0")
             if context and chat_id is not None:
                 await context.bot.send_message(
                     chat_id=chat_id, text="Training completed."
                 )
         else:
             logging.error("Training failed: %s", stderr.decode())
-            if context and chat_id is not None:
-                await context.bot.send_message(
-                    chat_id=chat_id, text="Training failed."
-                )
     except Exception:
         logging.exception("Training error")
-        if context and chat_id is not None:
-            await context.bot.send_message(
-                chat_id=chat_id, text="Training error."
-            )
     finally:
         dataset_path.unlink(missing_ok=True)
 

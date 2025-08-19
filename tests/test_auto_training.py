@@ -45,6 +45,36 @@ def test_update_repo_hash_detects_changes(tmp_path, caplog, monkeypatch):
             os.chdir(cwd)
 
 
+def test_update_repo_hash_ignores_temp_files(tmp_path, monkeypatch):
+    fake_mol = types.ModuleType("molecule")
+
+    async def dummy_run_training(chat_id, context):
+        return None
+
+    fake_mol.run_training = dummy_run_training
+    fake_mol.TRAINING_TASK = None
+    monkeypatch.setitem(sys.modules, "molecule", fake_mol)
+
+    inhale_exhale = importlib.reload(importlib.import_module("inhale_exhale"))
+    with Memory(path=str(tmp_path / "mem.db")) as mem:
+        inhale_exhale.memory = mem
+        cwd = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            (tmp_path / "logs").mkdir()
+            log = tmp_path / "logs" / "app.log"
+            mem.update_repo_hash()
+            mem.set_meta("needs_training", "0")
+            log.write_text("a")
+            mem.update_repo_hash()
+            assert not mem.needs_training()
+            log.write_text("b")
+            mem.update_repo_hash()
+            assert not mem.needs_training()
+        finally:
+            os.chdir(cwd)
+
+
 @pytest.mark.asyncio
 async def test_exhale_triggers_training_when_needed(tmp_path, monkeypatch):
     fake_mol = types.ModuleType("molecule")
@@ -52,6 +82,7 @@ async def test_exhale_triggers_training_when_needed(tmp_path, monkeypatch):
 
     async def dummy_run_training(chat_id, context):
         event.set()
+        inhale_exhale.memory.set_meta("needs_training", "0")
 
     fake_mol.run_training = dummy_run_training
     fake_mol.TRAINING_TASK = None
@@ -61,12 +92,32 @@ async def test_exhale_triggers_training_when_needed(tmp_path, monkeypatch):
     with Memory(path=str(tmp_path / "mem.db")) as mem:
         inhale_exhale.memory = mem
         mem.set_meta("needs_training", "1")
-
         await inhale_exhale.exhale(1, None)
+        assert mem.needs_training()
         assert fake_mol.TRAINING_TASK is not None
         await fake_mol.TRAINING_TASK
         assert event.is_set()
         assert not mem.needs_training()
+
+
+@pytest.mark.asyncio
+async def test_exhale_skips_when_not_needed(tmp_path, monkeypatch):
+    fake_mol = types.ModuleType("molecule")
+    started = {"flag": False}
+
+    async def dummy_run_training(chat_id, context):
+        started["flag"] = True
+
+    fake_mol.run_training = dummy_run_training
+    fake_mol.TRAINING_TASK = None
+    monkeypatch.setitem(sys.modules, "molecule", fake_mol)
+
+    inhale_exhale = importlib.reload(importlib.import_module("inhale_exhale"))
+    with Memory(path=str(tmp_path / "mem.db")) as mem:
+        inhale_exhale.memory = mem
+        mem.set_meta("needs_training", "0")
+        await inhale_exhale.exhale(1, None)
+        assert not started["flag"]
 
 
 @pytest.mark.asyncio

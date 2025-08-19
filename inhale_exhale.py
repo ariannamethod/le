@@ -34,12 +34,14 @@ def inhale(question: str, answer: str) -> None:
 
 
 async def exhale(chat_id: int, context) -> None:
-    """Trigger training in the background if needed."""
-    if memory.needs_training():
-        import molecule  # Local import to avoid circular dependency
-        if molecule.TRAINING_TASK is None or molecule.TRAINING_TASK.done():
-            logging.info("Starting background training")
-            molecule.TRAINING_TASK = asyncio.create_task(
-                molecule.run_training(chat_id, context)
-            )
-            memory.set_meta("needs_training", "0")
+    """Trigger training in the background if required."""
+    if not memory.needs_training():
+        return
+
+    import molecule  # Local import to avoid circular dependency
+
+    if molecule.TRAINING_TASK is None or molecule.TRAINING_TASK.done():
+        logging.info("Starting background training")
+        molecule.TRAINING_TASK = asyncio.create_task(
+            molecule.run_training(chat_id, context)
+        )
