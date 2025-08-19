@@ -5,7 +5,7 @@ from pathlib import Path
 
 from memory import Memory
 
-WORK_DIR = Path(os.getenv("LE_WORK_DIR", "names"))
+WORK_DIR = Path(os.getenv("LE_WORK_DIR", "le_data"))
 MODEL_PATH = WORK_DIR / "model.pt"
 
 # Global memory instance

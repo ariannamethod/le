@@ -39,13 +39,13 @@ charlotte
 Let's point the script at it:
 
 ```bash
-$ python le.py -i blood/lines01.txt -o names
+$ python le.py -i blood/lines01.txt -o le_data
 ```
 
-Training progress and logs and model will all be saved to the working directory `names`. The default model is a super tiny 200K param transformer; Many more training configurations are available - see the argparse and read the code. Training does not require any special hardware, it runs on my Macbook Air and will run on anything else, but if you have a GPU then training will fly faster. As training progresses the script will print some samples throughout. However, if you'd like to sample manually, you can use the `--sample-only` flag, e.g. in a separate terminal do:
+Training progress and logs and model will all be saved to the working directory `le_data`. The default model is a super tiny 200K param transformer; Many more training configurations are available - see the argparse and read the code. Training does not require any special hardware, it runs on my Macbook Air and will run on anything else, but if you have a GPU then training will fly faster. As training progresses the script will print some samples throughout. However, if you'd like to sample manually, you can use the `--sample-only` flag, e.g. in a separate terminal do:
 
 ```bash
-$ python le.py -i blood/lines01.txt -o names --sample-only
+$ python le.py -i blood/lines01.txt -o le_data --sample-only
 ```
 
 This will load the best model so far and print more samples on demand. Here are some unique baby names that get eventually generated from current default settings (test logprob of ~1.92, though much lower logprobs are achievable with some hyperparameter tuning):

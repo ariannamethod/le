@@ -16,10 +16,10 @@ molecule.TRAINING_TASK = None
 
 @pytest.mark.asyncio
 async def test_respond_produces_one_line(monkeypatch, tmp_path):
-    names_dir = tmp_path / "names"
-    names_dir.mkdir()
-    (names_dir / "model.pt").write_text("dummy")
-    molecule.WORK_DIR = names_dir
+    work_dir = tmp_path / "le_data"
+    work_dir.mkdir()
+    (work_dir / "model.pt").write_text("dummy")
+    molecule.WORK_DIR = work_dir
     monkeypatch.chdir(tmp_path)
 
     dataset_file = tmp_path / "dataset.txt"
@@ -60,16 +60,16 @@ async def test_respond_produces_one_line(monkeypatch, tmp_path):
     assert "--num-samples" in captured['args'] and "1" in captured['args']
     assert "--quiet" in captured['args']
     assert "--work-dir" in captured["args"]
-    assert str(names_dir) in captured["args"]
+    assert str(work_dir) in captured["args"]
     assert "\n" not in replies[0]
 
 
 @pytest.mark.asyncio
 async def test_respond_handles_timeout(monkeypatch, tmp_path):
-    names_dir = tmp_path / "names"
-    names_dir.mkdir()
-    (names_dir / "model.pt").write_text("dummy")
-    molecule.WORK_DIR = names_dir
+    work_dir = tmp_path / "le_data"
+    work_dir.mkdir()
+    (work_dir / "model.pt").write_text("dummy")
+    molecule.WORK_DIR = work_dir
     dataset_file = tmp_path / "dataset.txt"
     dataset_file.write_text("hello\n")
     monkeypatch.setattr(molecule, "build_dataset", lambda: dataset_file)

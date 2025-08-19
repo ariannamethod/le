@@ -21,7 +21,7 @@ from inhale_exhale import inhale, exhale
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
-WORK_DIR = Path(os.getenv("LE_WORK_DIR", "names"))
+WORK_DIR = Path(os.getenv("LE_WORK_DIR", "le_data"))
 SAMPLE_TIMEOUT = int(os.getenv("LE_SAMPLE_TIMEOUT", "120"))
 TRAINING_TASK: asyncio.Task | None = None
 TRAINING_LIMIT_BYTES = 20 * 1024
