@@ -64,6 +64,23 @@ class Memory:
         """Persist a conversation pair."""
         self.save_conversation(question, answer)
 
+    def get_messages(self, limit: int | None = None) -> list[str]:
+        """Return recent conversation lines in chronological order."""
+        cur = self.conn.cursor()
+        query = "SELECT question, answer FROM conversations ORDER BY id DESC"
+        if limit is not None:
+            cur.execute(query + " LIMIT ?", (limit,))
+        else:
+            cur.execute(query)
+        rows = cur.fetchall()
+        lines: list[str] = []
+        for question, answer in reversed(rows):
+            if question:
+                lines.append(question)
+            if answer:
+                lines.append(answer)
+        return lines
+
     def update_repo_hash(self, repo_path: str | Path = ".") -> None:
         """Compute file hashes and flag training when source files change.
 

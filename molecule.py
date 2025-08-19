@@ -73,7 +73,7 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not model_path.exists():
         if TRAINING_TASK is None or TRAINING_TASK.done():
             TRAINING_TASK = asyncio.create_task(run_training(None, None))
-        dataset_path = build_dataset()
+        dataset_path = build_dataset(question)
         try:
             data = dataset_path.read_text(encoding="utf-8").splitlines()
             lines = [line.strip() for line in data if line.strip()]
@@ -84,7 +84,7 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         inhale(question, reply)
         await exhale(update.effective_chat.id, context)
         return
-    dataset_path = build_dataset()
+    dataset_path = build_dataset(question)
     try:
         seed = random.randint(0, 2**31 - 1)
         proc = await asyncio.create_subprocess_exec(
@@ -183,7 +183,7 @@ async def train(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     TRAINING_TASK = asyncio.create_task(run_training(chat_id, context))
 
 
-def build_dataset() -> Path:
+def build_dataset(latest_line: str | None = None) -> Path:
     with tempfile.NamedTemporaryFile(
         mode="w", delete=False, suffix=".txt", encoding="utf-8"
     ) as tmp:
@@ -199,6 +199,22 @@ def build_dataset() -> Path:
                 data_bytes[:remaining].decode("utf-8", errors="ignore")
             )
             total += min(len(data_bytes), remaining)
+        for line in memory.get_messages():
+            remaining = TRAINING_LIMIT_BYTES - total
+            if remaining <= 0:
+                break
+            data_bytes = (line + "\n").encode("utf-8")
+            tmp.write(
+                data_bytes[:remaining].decode("utf-8", errors="ignore")
+            )
+            total += min(len(data_bytes), remaining)
+        if latest_line:
+            remaining = TRAINING_LIMIT_BYTES - total
+            if remaining > 0:
+                data_bytes = (latest_line + "\n").encode("utf-8")
+                tmp.write(
+                    data_bytes[:remaining].decode("utf-8", errors="ignore")
+                )
     return Path(tmp.name)
 
 
