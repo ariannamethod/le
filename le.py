@@ -734,7 +734,7 @@ if __name__ == '__main__':
             print(f"step {step} | loss {loss.item():.4f} | step time {(t1-t0)*1000:.2f}ms")
 
         # evaluate the model
-        if step > 0 and step % 500 == 0:
+        if step > 0 and step % 100 == 0:
             train_loss = evaluate(model, train_dataset, batch_size=100, max_batches=10)
             test_loss  = evaluate(model, test_dataset,  batch_size=100, max_batches=10)
             writer.add_scalar("Loss/train", train_loss, step)

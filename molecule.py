@@ -1,5 +1,6 @@
 import os
 import subprocess
+from pathlib import Path
 
 from dotenv import load_dotenv
 from telegram import Update
@@ -24,6 +25,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
+        model_path = Path("names/model.pt")
+        if not model_path.exists():
+            subprocess.run(
+                [
+                    "python",
+                    "le.py",
+                    "-i",
+                    "blood/lines01.txt",
+                    "-o",
+                    "names",
+                    "--max-steps",
+                    "200",
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=600,
+            )
         result = subprocess.run(
             [
                 "python",
