@@ -65,6 +65,7 @@ async def test_respond_produces_one_line(monkeypatch, tmp_path):
 
     assert replies == ["sample"]
     assert "--num-samples" in captured["args"] and "1" in captured["args"]
+    assert "--prompt" in captured["args"] and "hi" in captured["args"]
     assert "--quiet" in captured["args"]
     assert "--work-dir" in captured["args"]
     assert str(names_dir) in captured["args"]
