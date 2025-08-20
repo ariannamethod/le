@@ -24,7 +24,7 @@ from telegram.ext import (
     filters,
 )
 
-from inhale_exhale import inhale, exhale, memory
+from inhale_exhale import inhale, memory
 import metrics
 
 load_dotenv()
@@ -83,7 +83,7 @@ def warmup_model() -> None:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
-        "Hi! Send me a message and I’ll ask LE to respond."
+        "Hi! Send me a message and I'll ask LE to respond."
     )
 
 
@@ -98,16 +98,19 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if user_id in active_users:
             return
         active_users.add(user_id)
+    
     try:
         model_path = WORK_DIR / "model.pt"
 
+        # ЕСЛИ МОДЕЛЬ НЕ СУЩЕСТВУЕТ - НЕ ОТВЕЧАЕМ ВООБЩЕ, ТОЛЬКО ЗАПУСКАЕМ ОБУЧЕНИЕ
         if not model_path.exists():
             async with training_lock:
                 if TRAINING_TASK is None or TRAINING_TASK.done():
                     TRAINING_TASK = asyncio.create_task(run_training(None, None))
-            await update.message.reply_text("Model is training. Please wait a moment.")
+            # НЕ СОХРАНЯЕМ В ПАМЯТЬ И НЕ ОТВЕЧАЕМ!
             return
 
+        # ИСПОЛЬЗУЕМ LE.PY ДЛЯ ГЕНЕРАЦИИ С АЛГОРИТМОМ ЗАРЯЖЕННОГО СЛОВА
         dataset_path = build_dataset()
         try:
             seed = random.randint(0, 2**31 - 1)
@@ -143,7 +146,7 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 proc.kill()
                 await proc.communicate()
                 logging.exception("Sampling timed out")
-                reply = "Sampling timed out."
+                reply = "Generation timed out. Try a shorter message."
             else:
                 if proc.returncode == 0:
                     lines = [
@@ -162,8 +165,13 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             dataset_path.unlink(missing_ok=True)
 
         await update.message.reply_text(reply)
+        
+        # СОХРАНЯЕМ ТОЛЬКО РЕАЛЬНЫЕ ДИАЛОГИ
         inhale(question, reply)
+        
+        # ПРОВЕРЯЕМ ФОНОВОЕ ДООБУЧЕНИЕ
         await check_background_training()
+        
     finally:
         if user_id is not None:
             active_users.discard(user_id)
@@ -339,4 +347,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
