@@ -7,11 +7,6 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-import torch
-# Принудительно использовать CPU
-torch.set_num_threads(4)  # Ограничиваем количество потоков для лучшей производительности
-os.environ["CUDA_VISIBLE_DEVICES"] = ""  # Скрываем все GPU устройства
-
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import (
@@ -33,7 +28,7 @@ WORK_DIR = Path(os.getenv("LE_WORK_DIR", "names")).resolve()
 WORK_DIR.mkdir(parents=True, exist_ok=True)
 if not os.access(WORK_DIR, os.W_OK):
     raise PermissionError(f"Cannot write to {WORK_DIR}")
-SAMPLE_TIMEOUT = int(os.getenv("LE_SAMPLE_TIMEOUT", "120"))
+SAMPLE_TIMEOUT = int(os.getenv("LE_SAMPLE_TIMEOUT", "60"))  # Уменьшил таймаут для быстрых ответов
 TRAINING_TASK: asyncio.Task | None = None
 TRAINING_LIMIT_BYTES = int(
     os.getenv("LE_TRAINING_LIMIT_BYTES", str(5 * 1024))
@@ -183,13 +178,13 @@ async def run_training(
             "--work-dir",
             str(WORK_DIR),
             "--max-steps",
-            "200",
+            "100",  # Уменьшил число шагов для ускорения
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
         try:
             stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=600
+                proc.communicate(), timeout=300  # Уменьшил таймаут обучения
             )
         except asyncio.TimeoutError:
             proc.kill()
