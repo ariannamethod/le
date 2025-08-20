@@ -18,6 +18,7 @@ from telegram.ext import (
 )
 
 from inhale_exhale import inhale, exhale, memory
+import metrics
 
 load_dotenv()
 
@@ -238,6 +239,7 @@ def build_dataset(latest_line: str | None = None) -> Path:
         mode="w", delete=False, suffix=".txt", encoding="utf-8"
     ) as tmp:
         total = 0
+        seen: set[str] = set()
 
         def write_line(line: str) -> None:
             nonlocal total
@@ -274,10 +276,15 @@ def build_dataset(latest_line: str | None = None) -> Path:
                                 write_line(" ".join(text_cells))
 
         for line in memory.get_messages():
+            if line in seen:
+                continue
             write_line(line)
+            metrics.log_response_metrics(line, 0)
+            seen.add(line)
 
-        if latest_line:
+        if latest_line and latest_line not in seen:
             write_line(latest_line)
+            metrics.log_response_metrics(latest_line, 0)
 
     return Path(tmp.name)
 
