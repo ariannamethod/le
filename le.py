@@ -485,6 +485,10 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
 
     def _encode(text: str) -> torch.Tensor:
         return torch.tensor([dataset.stoi[ch] for ch in text if ch in dataset.stoi], dtype=torch.long)
+    
+    def _encode_word(word: str) -> torch.Tensor:
+        """Encode a single word as character sequence"""
+        return torch.tensor([dataset.stoi[ch] for ch in word if ch in dataset.stoi], dtype=torch.long)
 
     # Получаем историю сообщений из памяти
     try:
@@ -504,23 +508,60 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
     # По умолчанию используем первый токен промпта или 0, если промпт пустой
     charged_token = prompt_tokens[0] if len(prompt_tokens) > 0 else torch.tensor(0)
 
-    # Находим самое "заряженное" слово (самое неожиданное/информативное)
-    if context_for_charge.numel() > 1 and len(prompt_tokens) > 0:
-        # Получаем предсказания модели для каждого токена в контексте
-        logits, _ = model(context_for_charge[:-1].unsqueeze(0).to(DEVICE))
-        probs = F.softmax(logits, dim=-1)[0]
-        # Определяем вероятности для фактических следующих токенов
-        token_probs = probs[torch.arange(context_for_charge.size(0)-1), context_for_charge[1:]]
-        # Смотрим только на вероятности токенов из промпта
-        prompt_probs = token_probs[-len(prompt_tokens):]
-        # Находим токен с самой низкой вероятностью (самый "заряженный")
-        charged_idx = torch.argmin(prompt_probs)
-        charged_token = prompt_tokens[charged_idx]
+    # Находим самое "заряженное" СЛОВО (не символ!)
+    words = prompt.strip().split()
+    charged_word = ""
+    
+    if words and context_for_charge.numel() > 1:
+        word_scores = []
+        
+        # Для каждого слова вычисляем его "заряженность"
+        for word in words:
+            word_tokens = _encode_word(word.lower())
+            if len(word_tokens) == 0:
+                word_scores.append((word, 0.0))
+                continue
+                
+            # Создаем контекст для этого слова
+            word_context = torch.cat((context_for_charge, word_tokens), dim=0)
+            if word_context.size(0) > block_size:
+                word_context = word_context[-block_size:]
+            
+            # Вычисляем вероятность слова в контексте
+            try:
+                logits, _ = model(word_context[:-len(word_tokens)].unsqueeze(0).to(DEVICE))
+                probs = F.softmax(logits, dim=-1)[0]
+                
+                # Средняя вероятность символов слова
+                word_prob = 1.0
+                for i, token in enumerate(word_tokens):
+                    if i < probs.size(0):
+                        word_prob *= probs[i, token].item()
+                
+                # Чем меньше вероятность, тем больше "заряженность"
+                word_scores.append((word, -word_prob))  # отрицательная для сортировки
+            except:
+                word_scores.append((word, 0.0))
+        
+        # Выбираем самое заряженное слово
+        if word_scores:
+            charged_word = max(word_scores, key=lambda x: x[1])[0]
+            print(f"DEBUG: Заряженное слово: '{charged_word}' из {words}")
+    
+    # Если не нашли заряженное слово, берем первое
+    if not charged_word and words:
+        charged_word = words[0]
 
     # Теперь генерируем текст, начиная с заряженного слова
     def _generate_once() -> str:
+        # Кодируем заряженное слово как последовательность символов
+        if charged_word:
+            charged_word_tokens = _encode_word(charged_word.lower())
+        else:
+            charged_word_tokens = torch.tensor([charged_token.item()], dtype=torch.long)
+        
         # Начинаем с контекста + заряженного слова
-        idx_context = torch.cat((start_tok, memory_tokens, prompt_tokens, charged_token.view(1)), dim=0)
+        idx_context = torch.cat((start_tok, memory_tokens, charged_word_tokens), dim=0)
         if idx_context.size(0) > block_size:
             idx_context = idx_context[-block_size:]
         idx = idx_context.unsqueeze(0).to(DEVICE)
@@ -536,18 +577,22 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
             top_p=top_p,
         )
         
-        # Извлекаем сгенерированные токены
+        # Извлекаем сгенерированные токены (продолжение после заряженного слова)
         gen_tokens = out[0, idx.size(1):].tolist()
         if 0 in gen_tokens:
             gen_tokens = gen_tokens[:gen_tokens.index(0)]
         gen_tokens = [t for t in gen_tokens if t != 0]
         
-        # Если ничего не сгенерировано, используем заряженный токен
-        if not gen_tokens:
-            gen_tokens = [charged_token.item()]
+        # Декодируем продолжение
+        continuation = dataset.decode(gen_tokens) if gen_tokens else ""
         
-        # Декодируем токены в текст
-        text = dataset.decode(gen_tokens)
+        # Формируем финальный текст: заряженное слово + продолжение
+        if charged_word:
+            text = charged_word + continuation
+        else:
+            # Если нет заряженного слова, используем только продолжение
+            text = continuation
+        
         text = text.strip()
         
         # Обеспечиваем, что предложение начинается с заглавной буквы и заканчивается точкой
