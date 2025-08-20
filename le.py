@@ -469,7 +469,7 @@ def generate(model, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k
 
     return idx
 
-def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens: int = 20, temperature: float = 1.0, top_k: int | None = 50, top_p: float | None = 0.95) -> str:
+def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens: int = 15, temperature: float = 0.8, top_k: int | None = 40, top_p: float | None = 0.9) -> str:
     """Generate text conditioned on a prompt and conversation history.
 
     The ``prompt`` is tokenized, the token with the highest information gain
@@ -762,7 +762,13 @@ def create_datasets(input_path):
                 for line in f:
                     line = line.strip()
                     if line:
-                        words.append(line)
+                        # Разбиваем строку на слова, но сохраняем некоторые символы для творческого хаоса
+                        line_words = line.split()
+                        for word in line_words:
+                            # Очищаем от большинства символов, но оставляем некоторые для "безумия"
+                            cleaned_word = ''.join(c for c in word if c.isalnum() or c in ".,!?'-")
+                            if cleaned_word and len(cleaned_word) > 1:  # Только слова длиннее 1 символа
+                                words.append(cleaned_word)
     chars = sorted(list(set(''.join(words)))) # all the possible characters
     max_word_length = max(len(w) for w in words) if words else 0
     qprint(f"number of examples in the dataset: {len(words)}")
