@@ -23,6 +23,10 @@ import response_log
 
 # force CPU execution
 DEVICE = torch.device('cpu')
+# Ограничиваем количество потоков для лучшей производительности
+torch.set_num_threads(4)
+# Отключаем CUDA даже если он есть
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 QUIET = False
 
@@ -485,7 +489,9 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
     def _encode(text: str) -> torch.Tensor:
         return torch.tensor([dataset.stoi[ch] for ch in text if ch in dataset.stoi], dtype=torch.long)
 
+    # Получаем историю сообщений из памяти
     memory_tokens = _encode(" ".join(memory.get_messages()))
+    # Токенизируем текущий промпт
     prompt_tokens = _encode(prompt)
     start_tok = torch.tensor([0], dtype=torch.long)
     block_size = model.get_block_size()
@@ -493,21 +499,32 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
     if max_memory > 0 and len(memory_tokens) > max_memory:
         memory_tokens = memory_tokens[-max_memory:]
     context_for_charge = torch.cat((start_tok, memory_tokens, prompt_tokens), dim=0)
+    
+    # По умолчанию используем первый токен промпта или 0, если промпт пустой
     charged_token = prompt_tokens[0] if len(prompt_tokens) > 0 else torch.tensor(0)
 
+    # Находим самое "заряженное" слово (самое неожиданное/информативное)
     if context_for_charge.numel() > 1 and len(prompt_tokens) > 0:
+        # Получаем предсказания модели для каждого токена в контексте
         logits, _ = model(context_for_charge[:-1].unsqueeze(0).to(DEVICE))
         probs = F.softmax(logits, dim=-1)[0]
+        # Определяем вероятности для фактических следующих токенов
         token_probs = probs[torch.arange(context_for_charge.size(0)-1), context_for_charge[1:]]
+        # Смотрим только на вероятности токенов из промпта
         prompt_probs = token_probs[-len(prompt_tokens):]
+        # Находим токен с самой низкой вероятностью (самый "заряженный")
         charged_idx = torch.argmin(prompt_probs)
         charged_token = prompt_tokens[charged_idx]
 
+    # Теперь генерируем текст, начиная с заряженного слова
     def _generate_once() -> str:
+        # Начинаем с контекста + заряженного слова
         idx_context = torch.cat((start_tok, memory_tokens, prompt_tokens, charged_token.view(1)), dim=0)
         if idx_context.size(0) > block_size:
             idx_context = idx_context[-block_size:]
         idx = idx_context.unsqueeze(0).to(DEVICE)
+        
+        # Генерируем продолжение
         out = generate(
             model,
             idx,
@@ -517,24 +534,35 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
             top_k=top_k,
             top_p=top_p,
         )
+        
+        # Извлекаем сгенерированные токены
         gen_tokens = out[0, idx.size(1):].tolist()
         if 0 in gen_tokens:
             gen_tokens = gen_tokens[:gen_tokens.index(0)]
         gen_tokens = [t for t in gen_tokens if t != 0]
+        
+        # Если ничего не сгенерировано, используем заряженный токен
         if not gen_tokens:
             gen_tokens = [charged_token.item()]
+        
+        # Декодируем токены в текст
         text = dataset.decode(gen_tokens)
         text = text.strip()
+        
+        # Обеспечиваем, что предложение начинается с заглавной буквы и заканчивается точкой
         if text:
             text = text[0].upper() + text[1:]
         if not text.endswith('.'):
             text += '.'
+        
         return text
 
+    # Пробуем сгенерировать уникальное предложение несколько раз
     for _ in range(3):
         text = _generate_once()
         if response_log.check_and_log(text):
             return text
+    
     return "Повтор, попробуйте снова."
 
 def print_samples(num=20, return_samples=False):
@@ -613,6 +641,7 @@ def chat(model, data_path, memory):
             break
         if user is None or user.strip() == '':
             break
+        for _ in range(20):​​​​​​​​​​​​​​​​
         for _ in range(20):
             X, Y = [t.to(DEVICE) for t in loader.next()]
             logits, loss = model(X, Y)
@@ -808,7 +837,7 @@ if __name__ == '__main__':
     if args.resume or args.sample_only or skip_training:
         if os.path.exists(model_path):
             qprint("resuming from existing model in the workdir")
-            model.load_state_dict(torch.load(model_path))
+            model.load_state_dict(torch.load(model_path, map_location=DEVICE))
         else:
             qprint("no existing model found in the workdir")
     if args.sample_only:
