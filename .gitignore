@@ -135,3 +135,6 @@ logs/
 *.pt
 *.pkl
 *.pth
+
+# Database files
+*.db
