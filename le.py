@@ -469,7 +469,7 @@ def generate(model, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k
 
     return idx
 
-def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens: int = 15, temperature: float = 0.8, top_k: int | None = 40, top_p: float | None = 0.9) -> str:
+def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens: int = 1, temperature: float = 0.8, top_k: int | None = 40, top_p: float | None = 0.9) -> str:
     """Generate text conditioned on a prompt and conversation history.
 
     The ``prompt`` is tokenized, the token with the highest information gain
@@ -487,8 +487,13 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
         return torch.tensor([dataset.stoi[ch] for ch in text if ch in dataset.stoi], dtype=torch.long)
     
     def _encode_word(word: str) -> torch.Tensor:
-        """Encode a single word as character sequence"""
-        return torch.tensor([dataset.stoi[ch] for ch in word if ch in dataset.stoi], dtype=torch.long)
+        """Encode a single word as single token"""
+        if word.lower() in dataset.word_stoi:
+            return torch.tensor([dataset.word_stoi[word.lower()]], dtype=torch.long)
+        else:
+            # Если слова нет в словаре, берем первое доступное слово
+            first_word_idx = list(dataset.word_stoi.values())[1]  # пропускаем <START>
+            return torch.tensor([first_word_idx], dtype=torch.long)
 
     # Получаем историю сообщений из памяти
     try:
@@ -560,11 +565,10 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
         else:
             charged_word_tokens = torch.tensor([charged_token.item()], dtype=torch.long)
         
-        # Начинаем с контекста + заряженного слова
-        idx_context = torch.cat((start_tok, memory_tokens, charged_word_tokens), dim=0)
-        if idx_context.size(0) > block_size:
-            idx_context = idx_context[-block_size:]
-        idx = idx_context.unsqueeze(0).to(DEVICE)
+        # ИСПРАВЛЕНИЕ: для word-level модели упрощаем контекст
+        # Начинаем с <START> токена
+        start_token = torch.tensor([0], dtype=torch.long)  # <START>
+        idx = start_token.unsqueeze(0).to(DEVICE)
         
         # Генерируем продолжение
         out = generate(
@@ -577,30 +581,21 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
             top_p=top_p,
         )
         
-        # Извлекаем сгенерированные токены (продолжение после заряженного слова)
-        gen_tokens = out[0, idx.size(1):].tolist()
-        if 0 in gen_tokens:
-            gen_tokens = gen_tokens[:gen_tokens.index(0)]
-        gen_tokens = [t for t in gen_tokens if t != 0]
+        # ИСПРАВЛЕНИЕ: для word-level модели упрощаем декодирование
+        # Берем только последний сгенерированный токен (слово)
+        if out.size(1) > 1:
+            generated_token = out[0, -1].item()
+            text = dataset.decode([generated_token])
+        else:
+            text = "hello"  # fallback
         
-        # Декодируем продолжение
-        continuation = dataset.decode(gen_tokens) if gen_tokens else ""
-        
-        # DEBUG: показываем что генерируется
-        print(f"DEBUG: gen_tokens={gen_tokens}")
-        print(f"DEBUG: continuation='{continuation}'")
+        # DEBUG: показываем что генерируется  
+        print(f"DEBUG: generated_token={generated_token if 'generated_token' in locals() else 'None'}")
+        print(f"DEBUG: decoded_text='{text}'")
         print(f"DEBUG: charged_word='{charged_word}'")
         
-        # Формируем финальный текст: заряженное слово + продолжение
-        if charged_word:
-            text = charged_word + continuation
-        else:
-            # Если нет заряженного слова, используем только продолжение
-            text = continuation
-        
+        # Очищаем и форматируем
         text = text.strip()
-        
-        # Обеспечиваем, что предложение начинается с заглавной буквы и заканчивается точкой
         if text:
             text = text[0].upper() + text[1:]
         if not text.endswith('.'):
@@ -717,10 +712,21 @@ class CharDataset(Dataset):
 
     def __init__(self, words, chars, max_word_length):
         self.words = words
-        self.chars = chars
+        self.chars = chars  # Оставляем для совместимости, но не используем
         self.max_word_length = max_word_length
+        
+        # ИСПРАВЛЕНИЕ: создаем словарь СЛОВ, а не символов
+        unique_words = list(set(words))
+        self.word_stoi = {word: i+1 for i, word in enumerate(unique_words)}
+        self.word_itos = {i: word for word, i in self.word_stoi.items()}
+        
+        # Добавляем специальные токены
+        self.word_stoi['<START>'] = 0
+        self.word_itos[0] = '<START>'
+        
+        # Старые словари символов (для обратной совместимости)
         self.stoi = {ch:i+1 for i,ch in enumerate(chars)}
-        self.itos = {i:s for s,i in self.stoi.items()} # inverse mapping
+        self.itos = {i:s for s,i in self.stoi.items()}
 
     def __len__(self):
         return len(self.words)
@@ -729,27 +735,49 @@ class CharDataset(Dataset):
         return word in self.words
 
     def get_vocab_size(self):
-        return len(self.chars) + 1 # all the possible characters and special 0 token
-
+        return len(self.word_stoi) # количество уникальных СЛОВ
+    
     def get_output_length(self):
-        return self.max_word_length + 1 # <START> token followed by words
+        return 2 # <START> + одно слово
 
     def encode(self, word):
-        ix = torch.tensor([self.stoi[w] for w in word], dtype=torch.long)
-        return ix
+        # ИСПРАВЛЕНИЕ: кодируем слово как один токен
+        if word in self.word_stoi:
+            return torch.tensor([self.word_stoi[word]], dtype=torch.long)
+        else:
+            # Если слова нет в словаре, возвращаем токен неизвестного слова
+            return torch.tensor([1], dtype=torch.long)  # первое слово как fallback
 
     def decode(self, ix):
-        word = ''.join(self.itos[i] for i in ix)
-        return word
+        # ИСПРАВЛЕНИЕ: декодируем токены в слова
+        if isinstance(ix, list):
+            words = []
+            for token in ix:
+                if token in self.word_itos:
+                    word = self.word_itos[token]
+                    if word != '<START>':  # пропускаем служебные токены
+                        words.append(word)
+            return ' '.join(words)
+        else:
+            # Одиночный токен
+            if ix in self.word_itos:
+                return self.word_itos[ix]
+            return ""
 
     def __getitem__(self, idx):
         word = self.words[idx]
         ix = self.encode(word)
-        x = torch.zeros(self.max_word_length + 1, dtype=torch.long)
-        y = torch.zeros(self.max_word_length + 1, dtype=torch.long)
-        x[1:1+len(ix)] = ix
-        y[:len(ix)] = ix
-        y[len(ix)+1:] = -1 # index -1 will mask the loss at the inactive locations
+        
+        # ИСПРАВЛЕНИЕ: упрощаем для word-level модели
+        x = torch.zeros(2, dtype=torch.long)  # <START> + слово
+        y = torch.zeros(2, dtype=torch.long)  # <START> + слово
+        
+        x[0] = 0  # <START> токен
+        x[1] = ix[0]  # слово
+        
+        y[0] = ix[0]  # предсказываем слово после <START>
+        y[1] = -1  # маскируем последнюю позицию
+        
         return x, y
 
 def create_datasets(input_path):
@@ -787,6 +815,13 @@ def create_datasets(input_path):
     qprint("first 10 characters in vocabulary:")
     for i, char in enumerate(chars[:10]):
         qprint(f"  {i+1}: '{char}' -> {i+1}")
+    
+    # Создаем датасет и показываем словарь слов
+    temp_dataset = CharDataset(words, chars, max_word_length)
+    qprint(f"Word vocabulary size: {temp_dataset.get_vocab_size()}")
+    qprint("first 10 words in word vocabulary:")
+    for i, (word, idx) in enumerate(list(temp_dataset.word_stoi.items())[:10]):
+        qprint(f"  {i+1}: '{word}' -> {idx}")
 
     # partition the input data into a training and the test set
     test_set_size = min(1000, int(len(words) * 0.1)) # 10% of the training set, or up to 1000 examples
