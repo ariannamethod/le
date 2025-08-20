@@ -19,6 +19,7 @@ from torch.utils.data.dataloader import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from memory import Memory
 import metrics
+import response_log
 
 # force CPU execution
 DEVICE = torch.device('cpu')
@@ -502,24 +503,39 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
         charged_idx = torch.argmin(prompt_probs)
         charged_token = prompt_tokens[charged_idx]
 
-    idx_context = torch.cat((start_tok, memory_tokens, prompt_tokens, charged_token.view(1)), dim=0)
-    if idx_context.size(0) > block_size:
-        idx_context = idx_context[-block_size:]
-    idx = idx_context.unsqueeze(0).to(DEVICE)
-    out = generate(model, idx, max_new_tokens, temperature=temperature, do_sample=True, top_k=top_k, top_p=top_p)
-    gen_tokens = out[0, idx.size(1):].tolist()
-    if 0 in gen_tokens:
-        gen_tokens = gen_tokens[:gen_tokens.index(0)]
-    gen_tokens = [t for t in gen_tokens if t != 0]
-    if not gen_tokens:
-        gen_tokens = [charged_token.item()]
-    text = dataset.decode(gen_tokens)
-    text = text.strip()
-    if text:
-        text = text[0].upper() + text[1:]
-    if not text.endswith('.'):
-        text += '.'
-    return text
+    def _generate_once() -> str:
+        idx_context = torch.cat((start_tok, memory_tokens, prompt_tokens, charged_token.view(1)), dim=0)
+        if idx_context.size(0) > block_size:
+            idx_context = idx_context[-block_size:]
+        idx = idx_context.unsqueeze(0).to(DEVICE)
+        out = generate(
+            model,
+            idx,
+            max_new_tokens,
+            temperature=temperature,
+            do_sample=True,
+            top_k=top_k,
+            top_p=top_p,
+        )
+        gen_tokens = out[0, idx.size(1):].tolist()
+        if 0 in gen_tokens:
+            gen_tokens = gen_tokens[:gen_tokens.index(0)]
+        gen_tokens = [t for t in gen_tokens if t != 0]
+        if not gen_tokens:
+            gen_tokens = [charged_token.item()]
+        text = dataset.decode(gen_tokens)
+        text = text.strip()
+        if text:
+            text = text[0].upper() + text[1:]
+        if not text.endswith('.'):
+            text += '.'
+        return text
+
+    for _ in range(3):
+        text = _generate_once()
+        if response_log.check_and_log(text):
+            return text
+    return "Повтор, попробуйте снова."
 
 def print_samples(num=20, return_samples=False):
     """Samples from the model and optionally returns the decoded samples.
