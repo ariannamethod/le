@@ -1,5 +1,6 @@
 import math
 import torch.nn as nn
+import pytest
 
 import metrics
 from le import CharDataset
@@ -28,3 +29,22 @@ def test_resonance_logging():
     metrics.log_resonance(res, 0)
     assert metrics.get_metric("Resonance") == res
     assert -1.0 <= res <= 1.0
+
+
+def test_unique_token_ratio():
+    metrics.reset_metrics()
+    metrics.log_unique_token_ratio("a a b", 0)
+    assert metrics.get_metric("UniqueTokenRatio") == pytest.approx(2 / 3)
+
+
+def test_avg_response_length():
+    metrics.reset_metrics()
+    metrics.log_avg_response_length("a b", 0)
+    metrics.log_avg_response_length("c d e", 1)
+    assert metrics.get_metric("AvgResponseLength") == pytest.approx(2.5)
+
+
+def test_ngram_repeat_rate():
+    metrics.reset_metrics()
+    metrics.log_ngram_repeat_rate("a b a b", 0, n=2)
+    assert metrics.get_metric("RepeatRate") == pytest.approx(1 / 3)
