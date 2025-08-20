@@ -469,7 +469,7 @@ def generate(model, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k
 
     return idx
 
-def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens: int = 1, temperature: float = 0.8, top_k: int | None = 40, top_p: float | None = 0.9) -> str:
+def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens: int = 10, temperature: float = 0.8, top_k: int | None = 40, top_p: float | None = 0.9) -> str:
     """Generate text conditioned on a prompt and conversation history.
 
     The ``prompt`` is tokenized, the token with the highest information gain
@@ -550,24 +550,43 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
             top_p=top_p,
         )
         
-        # ИСПРАВЛЕНИЕ: используем заряженное слово если оно есть в словаре
+        # ИСПРАВЛЕНИЕ: заряженное слово В НАЧАЛО + генерация предложения
+        generated_words = []
+        
+        # 1. Добавляем заряженное слово в начало (если есть в словаре)
         if charged_word and charged_word.lower() in dataset.word_stoi:
-            text = charged_word
-            print(f"DEBUG: Используем заряженное слово: '{text}'")
-        else:
-            # Иначе генерируем случайное слово из модели
-            if out.size(1) > 1:
-                generated_token = out[0, -1].item()
-                text = dataset.decode([generated_token])
-                print(f"DEBUG: generated_token={generated_token}, decoded_text='{text}'")
+            generated_words.append(charged_word)
+            print(f"DEBUG: Начинаем с заряженного слова: '{charged_word}'")
+        
+        # 2. Генерируем остальные слова для предложения
+        if out.size(1) > 1:
+            for i in range(1, min(out.size(1), max_new_tokens + 1)):
+                token = out[0, i].item()
+                word = dataset.decode([token])
+                if word and word != '<START>':
+                    generated_words.append(word)
+                    print(f"DEBUG: добавляем слово: '{word}'")
+        
+        # 3. Если ничего не сгенерировали, генерируем случайные слова из словаря
+        if not generated_words:
+            # Берем случайные слова из словаря модели для живого ответа
+            import random
+            available_words = [word for word in dataset.word_itos.values() if word != '<START>' and len(word) > 2]
+            if len(available_words) >= 3:
+                random_words = random.sample(available_words, min(3, len(available_words)))
+                if charged_word:
+                    generated_words = [charged_word] + random_words[:2]
+                else:
+                    generated_words = random_words[:3]
             else:
-                text = "hello"  # fallback
-                print(f"DEBUG: fallback to '{text}'")
+                # Совсем крайний случай
+                generated_words = ["something", "mysterious", "happens"]
         
-        print(f"DEBUG: charged_word='{charged_word}'")
-        print(f"DEBUG: final_text='{text}'")
+        # 4. Собираем предложение
+        text = " ".join(generated_words)
+        print(f"DEBUG: итоговое предложение: '{text}'")
         
-        # Очищаем и форматируем
+        # 5. Форматируем
         text = text.strip()
         if text:
             text = text[0].upper() + text[1:]
