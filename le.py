@@ -487,7 +487,11 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
         return torch.tensor([dataset.stoi[ch] for ch in text if ch in dataset.stoi], dtype=torch.long)
 
     # Получаем историю сообщений из памяти
-    memory_tokens = _encode(" ".join(memory.get_messages()))
+    try:
+        messages = memory.get_messages()
+        memory_tokens = _encode(" ".join(messages)) if messages else _encode("")
+    except Exception:
+        memory_tokens = _encode("")
     # Токенизируем текущий промпт
     prompt_tokens = _encode(prompt)
     start_tok = torch.tensor([0], dtype=torch.long)
@@ -645,14 +649,8 @@ def chat(model, data_path, memory):
             model.zero_grad(set_to_none=True)
             loss.backward()
             optimizer.step()
-        context = [train_dataset.stoi.get(ch, 0) for ch in user]
-        x = torch.tensor([[0] + context], dtype=torch.long).to(DEVICE)
-        y = generate(model, x, train_dataset.get_output_length(), do_sample=True,
-                     top_k=args.top_k if args.top_k != -1 else None).to('cpu')
-        out = y[0, len(context)+1:].tolist()
-        if 0 in out:
-            out = out[:out.index(0)]
-        response = train_dataset.decode(out)
+        # Используем sample_prompt для поиска заряженного слова и генерации ответа
+        response = sample_prompt(user, model, train_dataset, memory)
         print(f'le: {response}')
         metrics.log_response_metrics(response, res_step)
         memory.save_conversation(user, response)
@@ -803,7 +801,7 @@ if __name__ == '__main__':
     train_dataset, test_dataset = create_datasets(args.input_file)
     vocab_size = train_dataset.get_vocab_size()
     block_size = train_dataset.get_output_length()
-    qprint(f"dataset determined that: {vocab_size=}, {block_size=}")
+    qprint(f"dataset determined that: vocab_size={vocab_size}, block_size={block_size}")
 
     memory = Memory()
     data_hash = Memory.hash_file(args.input_file)
@@ -840,20 +838,9 @@ if __name__ == '__main__':
     if args.sample_only:
         top_k = args.top_k if args.top_k != -1 else None
         if args.prompt:
-            context = [train_dataset.stoi.get(ch, 0) for ch in args.prompt]
-            x = torch.tensor([[0] + context], dtype=torch.long).to(DEVICE)
-            y = generate(
-                model,
-                x,
-                train_dataset.get_output_length(),
-                temperature=args.temperature,
-                do_sample=True,
-                top_k=top_k,
-            ).to('cpu')
-            out = y[0, len(context) + 1 :].tolist()
-            if 0 in out:
-                out = out[: out.index(0)]
-            sample = train_dataset.decode(out)
+            # Используем sample_prompt для поиска заряженного слова и генерации ответа
+            sample = sample_prompt(args.prompt, model, train_dataset, memory, 
+                                 temperature=args.temperature, top_k=top_k)
             print(sample)
         else:
             for sample in print_samples(num=args.num_samples, return_samples=True):
