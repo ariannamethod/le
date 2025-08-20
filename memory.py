@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import os
 import sqlite3
 from pathlib import Path
 from typing import Optional
@@ -92,7 +93,7 @@ class Memory:
         Tracks all files for code changes and specifically watches the
         ``blood/`` and ``datasets/`` directories. When data files change we
         accumulate their sizes and trigger training once the total exceeds
-        10KB.
+        ``LE_TRAINING_LIMIT_BYTES`` (default 5KB).
 
         Temporary artefacts such as logs or databases are ignored so that
         only relevant source data and code trigger retraining.
@@ -132,7 +133,10 @@ class Memory:
         if data_changed_bytes:
             total = int(self.get_meta("data_pending_bytes") or "0")
             total += data_changed_bytes
-            if total >= 10 * 1024:
+            training_limit = int(
+                os.getenv("LE_TRAINING_LIMIT_BYTES", str(5 * 1024))
+            )
+            if total >= training_limit:
                 self.set_meta("needs_training", "1")
                 total = 0
             self.set_meta("data_pending_bytes", str(total))

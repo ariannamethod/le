@@ -13,6 +13,10 @@ or by passing `--work-dir` when invoking `le.py`. If the file is missing,
 training is launched immediately in the background using `asyncio.create_task`,
 allowing the bot to stay responsive while the model is built.
 
+The amount of training data processed is capped by the
+`LE_TRAINING_LIMIT_BYTES` environment variable (default 5KB). It applies both
+when assembling datasets and when monitoring repository changes.
+
 ## Usage
 
 The repository ships with a small dataset at `blood/lines01.txt` containing
