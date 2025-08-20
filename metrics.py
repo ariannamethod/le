@@ -115,6 +115,22 @@ def _embedding_layer(model: nn.Module) -> Optional[nn.Embedding]:
     return None
 
 
+def compute_entropy(logits: torch.Tensor) -> float:
+    """Compute entropy of a probability distribution from logits."""
+    probs = F.softmax(logits, dim=-1)
+    log_probs = F.log_softmax(logits, dim=-1)
+    entropy = -(probs * log_probs).sum(dim=-1).mean()
+    return entropy.item()
+
+
+def log_entropy(entropy: float, step: int) -> None:
+    """Log entropy metric."""
+    _metrics["Entropy"] = entropy
+    if _writer is not None:
+        _writer.add_scalar("Entropy", entropy, step)
+        _writer.flush()
+
+
 def compute_resonance(model: nn.Module, dataset, prompt: str, response: str) -> float:
     """Compute cosine similarity between prompt and response embeddings."""
     embed = _embedding_layer(model)

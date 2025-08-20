@@ -468,6 +468,133 @@ def generate(model, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k
 
     return idx
 
+def _fallback_reply(prompt: str, model, dataset, memory: Memory, *, max_new_tokens: int = 20, temperature: float = 1.0, top_k: int | None = 50, top_p: float | None = 0.95) -> str:
+    """Generate a fallback reply using transformer-based approach.
+    
+    Finds the most "charged" word (lowest probability token) from the user message,
+    uses it as an initial token for transformer generation, and evaluates quality
+    using perplexity, entropy and resonance metrics.
+    """
+    
+    def _encode(text: str) -> torch.Tensor:
+        return torch.tensor([dataset.stoi[ch] for ch in text if ch in dataset.stoi], dtype=torch.long)
+    
+    # Get memory context
+    memory_tokens = _encode(" ".join(memory.get_messages()))
+    prompt_tokens = _encode(prompt)
+    start_tok = torch.tensor([0], dtype=torch.long)
+    block_size = model.get_block_size()
+    max_memory = block_size - len(prompt_tokens) - 1
+    if max_memory > 0 and len(memory_tokens) > max_memory:
+        memory_tokens = memory_tokens[-max_memory:]
+    
+    # Find the most "charged" token (lowest probability)
+    charged_token = prompt_tokens[0] if len(prompt_tokens) > 0 else torch.tensor(0)
+    
+    if len(prompt_tokens) > 0:
+        context_for_charge = torch.cat((start_tok, memory_tokens, prompt_tokens), dim=0)
+        if context_for_charge.numel() > 1:
+            with torch.no_grad():
+                logits, _ = model(context_for_charge[:-1].unsqueeze(0).to(DEVICE))
+                probs = F.softmax(logits, dim=-1)[0]
+                token_probs = probs[torch.arange(context_for_charge.size(0)-1), context_for_charge[1:]]
+                prompt_probs = token_probs[-len(prompt_tokens):]
+                charged_idx = torch.argmin(prompt_probs)
+                charged_token = prompt_tokens[charged_idx]
+    
+    def _generate_with_quality_assessment() -> str:
+        # Create context starting with the charged token
+        idx_context = torch.cat((start_tok, memory_tokens, prompt_tokens, charged_token.view(1)), dim=0)
+        if idx_context.size(0) > block_size:
+            idx_context = idx_context[-block_size:]
+        idx = idx_context.unsqueeze(0).to(DEVICE)
+        
+        # Generate using transformer
+        out = generate(
+            model,
+            idx,
+            max_new_tokens,
+            temperature=temperature,
+            do_sample=True,
+            top_k=top_k,
+            top_p=top_p,
+        )
+        
+        gen_tokens = out[0, idx.size(1):].tolist()
+        if 0 in gen_tokens:
+            gen_tokens = gen_tokens[:gen_tokens.index(0)]
+        gen_tokens = [t for t in gen_tokens if t != 0]
+        if not gen_tokens:
+            gen_tokens = [charged_token.item()]
+        
+        text = dataset.decode(gen_tokens)
+        text = text.strip()
+        if text:
+            text = text[0].upper() + text[1:]
+        if not text.endswith('.'):
+            text += '.'
+        
+        # Quality assessment using metrics
+        # Compute perplexity via loss
+        with torch.no_grad():
+            full_context = torch.cat((idx_context, torch.tensor(gen_tokens, dtype=torch.long)), dim=0)
+            if full_context.size(0) > block_size:
+                full_context = full_context[-block_size:]
+            logits, loss = model(full_context[:-1].unsqueeze(0).to(DEVICE), full_context[1:].unsqueeze(0).to(DEVICE))
+            
+            # Calculate entropy
+            entropy = metrics.compute_entropy(logits[0, -len(gen_tokens):])
+            
+            # Calculate resonance
+            resonance = metrics.compute_resonance(model, dataset, prompt, text)
+            
+            # Store quality metrics (for debugging/analysis)
+            perplexity = math.exp(loss.item()) if loss is not None else float('inf')
+            
+            # Simple quality assessment: prefer responses with reasonable perplexity, 
+            # moderate entropy (not too predictable, not too random), and positive resonance
+            quality_score = 0.0
+            if perplexity < 50.0:  # Reasonable perplexity
+                quality_score += 1.0
+            if 0.5 < entropy < 3.0:  # Moderate entropy
+                quality_score += 1.0
+            if resonance > 0.1:  # Some resonance with input
+                quality_score += 1.0
+            
+            # Return text with quality score for potential filtering
+            return text, quality_score
+    
+    # Try generating multiple times and pick the best quality response
+    best_text = None
+    best_quality = -1.0
+    
+    for attempt in range(3):
+        try:
+            text, quality = _generate_with_quality_assessment()
+            if quality > best_quality:
+                best_quality = quality
+                best_text = text
+            
+            # If we get a reasonably good response, use it
+            if quality >= 2.0:
+                break
+                
+        except Exception:
+            # If generation fails, continue to next attempt
+            continue
+    
+    # Return best response or fallback message
+    if best_text and best_quality > 0.0:
+        return best_text
+    else:
+        # Even the fallback failed, return a more creative attempt using just the charged token
+        if len(prompt_tokens) > 0:
+            charged_word = dataset.decode([charged_token.item()])
+            if charged_word.strip():
+                return f"{charged_word.strip().capitalize()}..."
+        return "Попробую по-другому."
+
+
 def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens: int = 20, temperature: float = 1.0, top_k: int | None = 50, top_p: float | None = 0.95) -> str:
     """Generate text conditioned on a prompt and conversation history.
 
@@ -535,7 +662,13 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
         text = _generate_once()
         if response_log.check_and_log(text):
             return text
-    return "Повтор, попробуйте снова."
+    
+    # Use transformer-based fallback instead of simple message
+    return _fallback_reply(prompt, model, dataset, memory, 
+                          max_new_tokens=max_new_tokens, 
+                          temperature=temperature, 
+                          top_k=top_k, 
+                          top_p=top_p)
 
 def print_samples(num=20, return_samples=False):
     """Samples from the model and optionally returns the decoded samples.

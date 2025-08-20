@@ -1,4 +1,5 @@
 import math
+import torch
 import torch.nn as nn
 import pytest
 
@@ -12,6 +13,27 @@ def test_log_loss_and_perplexity():
     metrics.log_loss("train", 0.5, 1)
     assert metrics.get_metric("Loss/train") == 0.5
     assert metrics.get_metric("Perplexity/train") == math.exp(0.5)
+
+
+def test_entropy_computation():
+    metrics.reset_metrics()
+    metrics.set_writer(None)
+    
+    # Test uniform distribution (should have high entropy)
+    uniform_logits = torch.zeros(1, 4)  # All equal logits
+    entropy_uniform = metrics.compute_entropy(uniform_logits)
+    
+    # Test peaked distribution (should have low entropy)  
+    peaked_logits = torch.tensor([[10.0, 0.0, 0.0, 0.0]])  # First entry much larger
+    entropy_peaked = metrics.compute_entropy(peaked_logits)
+    
+    # Log entropy
+    metrics.log_entropy(entropy_uniform, 0)
+    assert metrics.get_metric("Entropy") == entropy_uniform
+    
+    # Uniform should have higher entropy than peaked
+    assert entropy_uniform > entropy_peaked
+    assert entropy_peaked >= 0  # Entropy should be non-negative
 
 
 def test_resonance_logging():
