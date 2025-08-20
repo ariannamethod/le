@@ -16,12 +16,12 @@ memory = Memory()
 def _startup_training_check() -> None:
     """Schedule training at startup if the model file is missing."""
     if not MODEL_PATH.exists():
-        import molecule  # Local import to avoid circular dependency
+        import tg  # Local import to avoid circular dependency
 
-        if molecule.TRAINING_TASK is None or molecule.TRAINING_TASK.done():
+        if tg.TRAINING_TASK is None or tg.TRAINING_TASK.done():
             logging.info("Model file missing; starting initial training")
-            molecule.TRAINING_TASK = asyncio.create_task(
-                molecule.run_training(None, None)
+            tg.TRAINING_TASK = asyncio.create_task(
+                tg.run_training(None, None)
             )
 
 
@@ -47,12 +47,12 @@ async def exhale(chat_id: int, context) -> None:
     if not memory.needs_training():
         return
 
-    import molecule  # Local import to avoid circular dependency
+    import tg  # Local import to avoid circular dependency
 
-    if molecule.TRAINING_TASK is None or molecule.TRAINING_TASK.done():
+    if tg.TRAINING_TASK is None or tg.TRAINING_TASK.done():
         logging.info("Starting background training")
-        molecule.TRAINING_TASK = asyncio.create_task(
-            molecule.run_training(chat_id, context)
+        tg.TRAINING_TASK = asyncio.create_task(
+            tg.run_training(chat_id, context)
         )
     else:
         logging.info("Training already running; will retrigger if still needed")
@@ -60,6 +60,6 @@ async def exhale(chat_id: int, context) -> None:
         def _retry(_task: asyncio.Task) -> None:
             asyncio.create_task(exhale(chat_id, context))
 
-        if not getattr(molecule.TRAINING_TASK, "_retry_set", False):
-            molecule.TRAINING_TASK.add_done_callback(_retry)
-            setattr(molecule.TRAINING_TASK, "_retry_set", True)
+        if not getattr(tg.TRAINING_TASK, "_retry_set", False):
+            tg.TRAINING_TASK.add_done_callback(_retry)
+            setattr(tg.TRAINING_TASK, "_retry_set", True)
