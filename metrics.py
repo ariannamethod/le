@@ -8,6 +8,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 _metrics: Dict[str, float] = {}
 _writer: Optional[SummaryWriter] = None
+_response_total_len = 0
+_response_count = 0
 
 
 def set_writer(writer: Optional[SummaryWriter]) -> None:
@@ -37,6 +39,54 @@ def log_resonance(resonance: float, step: int) -> None:
         _writer.flush()
 
 
+def log_unique_token_ratio(text: str, step: int) -> None:
+    """Log the ratio of unique tokens in ``text``."""
+    tokens = text.split()
+    ratio = len(set(tokens)) / len(tokens) if tokens else 0.0
+    _metrics["UniqueTokenRatio"] = ratio
+    if _writer is not None:
+        _writer.add_scalar("UniqueTokenRatio", ratio, step)
+        _writer.flush()
+
+
+def log_avg_response_length(text: str, step: int) -> None:
+    """Log running average of response length in tokens."""
+    global _response_total_len, _response_count
+    tokens = text.split()
+    _response_total_len += len(tokens)
+    _response_count += 1
+    avg_len = _response_total_len / _response_count if _response_count else 0.0
+    _metrics["AvgResponseLength"] = avg_len
+    if _writer is not None:
+        _writer.add_scalar("AvgResponseLength", avg_len, step)
+        _writer.flush()
+
+
+def log_ngram_repeat_rate(text: str, step: int, n: int = 3) -> None:
+    """Log the n-gram repeat rate of ``text``."""
+    tokens = text.split()
+    total = max(len(tokens) - n + 1, 0)
+    if total == 0:
+        rate = 0.0
+    else:
+        ngrams = [tuple(tokens[i : i + n]) for i in range(total)]
+        counts: Dict[tuple, int] = {}
+        for ng in ngrams:
+            counts[ng] = counts.get(ng, 0) + 1
+        repeats = sum(c - 1 for c in counts.values() if c > 1)
+        rate = repeats / total
+    _metrics["RepeatRate"] = rate
+    if _writer is not None:
+        _writer.add_scalar("RepeatRate", rate, step)
+        _writer.flush()
+
+
+def log_response_metrics(text: str, step: int, n: int = 3) -> None:
+    """Convenience wrapper to log all response metrics."""
+    log_unique_token_ratio(text, step)
+    log_avg_response_length(text, step)
+    log_ngram_repeat_rate(text, step, n)
+
 def get_metric(name: str) -> float | None:
     """Return a logged metric by name."""
     return _metrics.get(name)
@@ -49,7 +99,10 @@ def all_metrics() -> Dict[str, float]:
 
 def reset_metrics() -> None:
     """Clear all stored metrics (useful for tests)."""
+    global _response_total_len, _response_count
     _metrics.clear()
+    _response_total_len = 0
+    _response_count = 0
 
 
 def _embedding_layer(model: nn.Module) -> Optional[nn.Embedding]:

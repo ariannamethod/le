@@ -564,6 +564,7 @@ def print_samples(num=20, return_samples=False):
         crop_index = row.index(0) if 0 in row else len(row)
         row = row[:crop_index]
         word_samp = train_dataset.decode(row)
+        metrics.log_response_metrics(word_samp, i)
         samples.append(word_samp)
         # separately track samples that we have and have not seen before
         if train_dataset.contains(word_samp):
@@ -627,6 +628,7 @@ def chat(model, data_path, memory):
             out = out[:out.index(0)]
         response = train_dataset.decode(out)
         print(f'le: {response}')
+        metrics.log_response_metrics(response, res_step)
         memory.save_conversation(user, response)
         resonance = metrics.compute_resonance(model, train_dataset, user, response)
         metrics.log_resonance(resonance, res_step)
