@@ -641,7 +641,6 @@ def chat(model, data_path, memory):
             break
         if user is None or user.strip() == '':
             break
-        for _ in range(20):​​​​​​​​​​​​​​​​
         for _ in range(20):
             X, Y = [t.to(DEVICE) for t in loader.next()]
             logits, loss = model(X, Y)

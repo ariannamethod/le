@@ -145,6 +145,10 @@ class Memory:
         """Return True if retraining is required."""
         return self.get_meta("needs_training") == "1"
 
+    def get_accumulated_size(self) -> int:
+        """Return number of bytes accumulated toward the training limit."""
+        return int(self.get_meta("data_pending_bytes") or "0")
+
     @staticmethod
     def hash_file(path: str) -> str:
         hasher = hashlib.sha256()
