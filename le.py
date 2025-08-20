@@ -586,6 +586,11 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
         # Декодируем продолжение
         continuation = dataset.decode(gen_tokens) if gen_tokens else ""
         
+        # DEBUG: показываем что генерируется
+        print(f"DEBUG: gen_tokens={gen_tokens}")
+        print(f"DEBUG: continuation='{continuation}'")
+        print(f"DEBUG: charged_word='{charged_word}'")
+        
         # Формируем финальный текст: заряженное слово + продолжение
         if charged_word:
             text = charged_word + continuation
@@ -776,6 +781,12 @@ def create_datasets(input_path):
     qprint(f"number of unique characters in the vocabulary: {len(chars)}")
     qprint("vocabulary:")
     qprint(''.join(chars))
+    qprint("first 10 words in dataset:")
+    for i, word in enumerate(words[:10]):
+        qprint(f"  {i+1}: '{word}'")
+    qprint("first 10 characters in vocabulary:")
+    for i, char in enumerate(chars[:10]):
+        qprint(f"  {i+1}: '{char}' -> {i+1}")
 
     # partition the input data into a training and the test set
     test_set_size = min(1000, int(len(words) * 0.1)) # 10% of the training set, or up to 1000 examples
