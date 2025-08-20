@@ -1,26 +1,39 @@
+import importlib
 import tg
-from memory import Memory
+import memory
 
 
-def test_build_dataset_enforces_limit(tmp_path, monkeypatch):
+import pytest
+
+
+@pytest.mark.parametrize("limit", [1024, 2048])
+def test_build_dataset_enforces_limit(tmp_path, monkeypatch, limit):
+    monkeypatch.setenv("LE_TRAINING_LIMIT_BYTES", str(limit))
+    importlib.reload(tg)
+    mem = memory.Memory(str(tmp_path / "memory.db"))
+    monkeypatch.setattr(tg, "memory", mem)
+
     blood_dir = tmp_path / "blood"
     blood_dir.mkdir()
-    chunk = "a" * (tg.TRAINING_LIMIT_BYTES // 2)
+    chunk = "a" * (limit // 2)
     (blood_dir / "f1.txt").write_text(chunk)
     (blood_dir / "f2.txt").write_text(chunk)
+
     monkeypatch.chdir(tmp_path)
     dataset_path = tg.build_dataset()
     try:
-        assert dataset_path.stat().st_size == tg.TRAINING_LIMIT_BYTES
+        assert dataset_path.stat().st_size == limit
     finally:
         dataset_path.unlink()
+        mem.close()
 
 
 def test_build_dataset_includes_memory_and_question(tmp_path, monkeypatch):
     blood_dir = tmp_path / "blood"
     blood_dir.mkdir()
     (blood_dir / "base.txt").write_text("base\n")
-    mem = Memory(str(tmp_path / "memory.db"))
+    importlib.reload(tg)
+    mem = memory.Memory(str(tmp_path / "memory.db"))
     mem.record_message("q1", "a1")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(tg, "memory", mem)
@@ -45,10 +58,10 @@ def test_build_dataset_reads_various_file_types(tmp_path, monkeypatch):
     (datasets_dir / "d.md").write_text("dataset md")
     (datasets_dir / "d.csv").write_text("num,text\n1,hello\n2,world\n")
 
-    mem = Memory(str(tmp_path / "memory.db"))
+    importlib.reload(tg)
+    mem = memory.Memory(str(tmp_path / "memory.db"))
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(tg, "memory", mem)
-
     dataset_path = tg.build_dataset()
     try:
         content = dataset_path.read_text(encoding="utf-8")
@@ -60,4 +73,24 @@ def test_build_dataset_reads_various_file_types(tmp_path, monkeypatch):
         assert "1" not in content and "2" not in content
     finally:
         dataset_path.unlink()
+        mem.close()
+
+
+def test_update_repo_hash_respects_env_limit(tmp_path, monkeypatch):
+    limit = 100
+    monkeypatch.setenv("LE_TRAINING_LIMIT_BYTES", str(limit))
+    monkeypatch.chdir(tmp_path)
+    mem = memory.Memory(str(tmp_path / "memory.db"))
+
+    blood_dir = tmp_path / "blood"
+    blood_dir.mkdir()
+    (blood_dir / "f1.txt").write_text("a" * (limit // 2))
+    mem.update_repo_hash()
+
+    (blood_dir / "f2.txt").write_text("a" * limit)
+    mem.update_repo_hash()
+
+    try:
+        assert mem.needs_training()
+    finally:
         mem.close()
