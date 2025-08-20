@@ -513,45 +513,14 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
     # По умолчанию используем первый токен промпта или 0, если промпт пустой
     charged_token = prompt_tokens[0] if len(prompt_tokens) > 0 else torch.tensor(0)
 
-    # Находим самое "заряженное" СЛОВО (не символ!)
+    # УПРОЩЕННАЯ логика для word-level модели
     words = prompt.strip().split()
     charged_word = ""
     
-    if words and context_for_charge.numel() > 1:
-        word_scores = []
-        
-        # Для каждого слова вычисляем его "заряженность"
-        for word in words:
-            word_tokens = _encode_word(word.lower())
-            if len(word_tokens) == 0:
-                word_scores.append((word, 0.0))
-                continue
-                
-            # Создаем контекст для этого слова
-            word_context = torch.cat((context_for_charge, word_tokens), dim=0)
-            if word_context.size(0) > block_size:
-                word_context = word_context[-block_size:]
-            
-            # Вычисляем вероятность слова в контексте
-            try:
-                logits, _ = model(word_context[:-len(word_tokens)].unsqueeze(0).to(DEVICE))
-                probs = F.softmax(logits, dim=-1)[0]
-                
-                # Средняя вероятность символов слова
-                word_prob = 1.0
-                for i, token in enumerate(word_tokens):
-                    if i < probs.size(0):
-                        word_prob *= probs[i, token].item()
-                
-                # Чем меньше вероятность, тем больше "заряженность"
-                word_scores.append((word, -word_prob))  # отрицательная для сортировки
-            except:
-                word_scores.append((word, 0.0))
-        
-        # Выбираем самое заряженное слово
-        if word_scores:
-            charged_word = max(word_scores, key=lambda x: x[1])[0]
-            print(f"DEBUG: Заряженное слово: '{charged_word}' из {words}")
+    if words:
+        # Простая эвристика: берем самое длинное слово (больше информации)
+        charged_word = max(words, key=len)
+        print(f"DEBUG: Заряженное слово: '{charged_word}' из {words}")
     
     # Если не нашли заряженное слово, берем первое
     if not charged_word and words:
@@ -581,18 +550,22 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
             top_p=top_p,
         )
         
-        # ИСПРАВЛЕНИЕ: для word-level модели упрощаем декодирование
-        # Берем только последний сгенерированный токен (слово)
-        if out.size(1) > 1:
-            generated_token = out[0, -1].item()
-            text = dataset.decode([generated_token])
+        # ИСПРАВЛЕНИЕ: используем заряженное слово если оно есть в словаре
+        if charged_word and charged_word.lower() in dataset.word_stoi:
+            text = charged_word
+            print(f"DEBUG: Используем заряженное слово: '{text}'")
         else:
-            text = "hello"  # fallback
+            # Иначе генерируем случайное слово из модели
+            if out.size(1) > 1:
+                generated_token = out[0, -1].item()
+                text = dataset.decode([generated_token])
+                print(f"DEBUG: generated_token={generated_token}, decoded_text='{text}'")
+            else:
+                text = "hello"  # fallback
+                print(f"DEBUG: fallback to '{text}'")
         
-        # DEBUG: показываем что генерируется  
-        print(f"DEBUG: generated_token={generated_token if 'generated_token' in locals() else 'None'}")
-        print(f"DEBUG: decoded_text='{text}'")
         print(f"DEBUG: charged_word='{charged_word}'")
+        print(f"DEBUG: final_text='{text}'")
         
         # Очищаем и форматируем
         text = text.strip()
