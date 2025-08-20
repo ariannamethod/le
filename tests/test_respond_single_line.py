@@ -146,11 +146,14 @@ async def test_respond_reports_training_when_model_missing(monkeypatch, tmp_path
         return None
 
     monkeypatch.setattr(tg, "exhale", dummy_exhale)
+    dataset_file = tmp_path / "dataset.txt"
+    dataset_file.write_text("hello hi world\nhi there friend\n")
+    monkeypatch.setattr(tg, "build_dataset", lambda q=None: dataset_file)
 
     replies = []
 
     class DummyMessage:
-        text = "hi"
+        text = "hi there"
 
         async def reply_text(self, text):
             replies.append(text)
@@ -160,7 +163,7 @@ async def test_respond_reports_training_when_model_missing(monkeypatch, tmp_path
     )
 
     await tg.respond(update, None)
-    assert replies == ["hi"]
+    assert replies == ["hi world hello"]
     assert tg.TRAINING_TASK is not None
     await tg.TRAINING_TASK
     assert started["flag"]

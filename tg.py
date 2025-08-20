@@ -81,6 +81,45 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+def _fallback_reply(question: str) -> str:
+    """Generate a reply from existing dataset lines when no model is available.
+
+    The function selects the most "resonant" word from the user's question –
+    i.e. the word that appears most frequently in the dataset – and rotates a
+    line containing that word to start with it. If no such line exists, the
+    first dataset line is returned instead. The dataset file is removed after
+    use.
+    """
+    dataset_path = build_dataset()
+    try:
+        text = dataset_path.read_text(encoding="utf-8")
+    finally:
+        dataset_path.unlink(missing_ok=True)
+
+    lines = [line for line in text.splitlines() if line.strip()]
+    if not lines:
+        return ""
+
+    from collections import Counter
+
+    counts: Counter[str] = Counter()
+    for line in lines:
+        for word in line.split():
+            counts[word.lower()] += 1
+
+    words = question.split()
+    resonant_word = max(words, key=lambda w: counts.get(w.lower(), 0)) if words else ""
+
+    for line in lines:
+        parts = line.split()
+        lower_parts = [p.lower() for p in parts]
+        if resonant_word and resonant_word.lower() in lower_parts:
+            idx = lower_parts.index(resonant_word.lower())
+            return " ".join(parts[idx:] + parts[:idx])
+
+    return lines[0]
+
+
 async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     global TRAINING_TASK
     question = update.message.text
@@ -88,7 +127,10 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not model_path.exists():
         if TRAINING_TASK is None or TRAINING_TASK.done():
             TRAINING_TASK = asyncio.create_task(run_training(None, None))
-        reply = question
+        # Generate a fallback reply from existing phrases instead of echoing
+        # the user's question so that LE always responds with an original
+        # phrase even while the model is training.
+        reply = _fallback_reply(question)
         await update.message.reply_text(reply)
         inhale(question, reply)
         await exhale(update.effective_chat.id, context)
