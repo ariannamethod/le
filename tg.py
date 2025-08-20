@@ -36,8 +36,8 @@ WORK_DIR.mkdir(parents=True, exist_ok=True)
 SAMPLE_TIMEOUT = int(os.getenv("LE_SAMPLE_TIMEOUT", "40"))
 TRAINING_TASK: asyncio.Task | None = None
 TRAINING_LIMIT_BYTES = int(os.getenv("LE_TRAINING_LIMIT_BYTES", str(5 * 1024)))
-TOP_K = int(os.getenv("LE_TOP_K", "50"))
-TEMPERATURE = float(os.getenv("LE_TEMPERATURE", "1.0"))
+TOP_K = int(os.getenv("LE_TOP_K", "40"))
+TEMPERATURE = float(os.getenv("LE_TEMPERATURE", "0.8"))
 
 training_lock = Lock()
 active_users: set[int] = set()
