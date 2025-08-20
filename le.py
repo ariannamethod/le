@@ -547,7 +547,14 @@ def print_samples(num=20, return_samples=False):
     X_init = torch.zeros(num, 1, dtype=torch.long).to(DEVICE)
     top_k = args.top_k if args.top_k != -1 else None
     steps = train_dataset.get_output_length() - 1  # -1 because we already start with <START> token (index 0)
-    X_samp = generate(model, X_init, steps, top_k=top_k, do_sample=True).to('cpu')
+    X_samp = generate(
+        model,
+        X_init,
+        steps,
+        temperature=args.temperature,
+        top_k=top_k,
+        do_sample=True,
+    ).to('cpu')
     train_samples, test_samples, new_samples = [], [], []
     samples = []
     for i in range(X_samp.size(0)):
@@ -741,6 +748,7 @@ if __name__ == '__main__':
     # sampling
     parser.add_argument('--num-samples', type=int, default=1, help="number of samples to draw when using --sample-only")
     parser.add_argument('--top-k', type=int, default=-1, help="top-k for sampling, -1 means no top-k")
+    parser.add_argument('--temperature', type=float, default=1.0, help="temperature for sampling")
     parser.add_argument('--prompt', type=str, default=None, help="prompt to condition on when sampling")
     # model
     parser.add_argument('--type', type=str, default='transformer', help="model class type to use, bigram|mlp|rnn|gru|bow|transformer")
@@ -810,6 +818,7 @@ if __name__ == '__main__':
                 model,
                 x,
                 train_dataset.get_output_length(),
+                temperature=args.temperature,
                 do_sample=True,
                 top_k=top_k,
             ).to('cpu')

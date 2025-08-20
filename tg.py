@@ -32,6 +32,8 @@ TRAINING_TASK: asyncio.Task | None = None
 TRAINING_LIMIT_BYTES = int(
     os.getenv("LE_TRAINING_LIMIT_BYTES", str(5 * 1024))
 )
+TOP_K = int(os.getenv("LE_TOP_K", "50"))
+TEMPERATURE = float(os.getenv("LE_TEMPERATURE", "1.0"))
 
 
 def warmup_model() -> None:
@@ -57,6 +59,10 @@ def warmup_model() -> None:
                 "--seed",
                 "0",
                 "--quiet",
+                "--top-k",
+                str(TOP_K),
+                "--temperature",
+                str(TEMPERATURE),
             ],
             capture_output=True,
             text=True,
@@ -82,13 +88,7 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not model_path.exists():
         if TRAINING_TASK is None or TRAINING_TASK.done():
             TRAINING_TASK = asyncio.create_task(run_training(None, None))
-        dataset_path = build_dataset(question)
-        try:
-            data = dataset_path.read_text(encoding="utf-8").splitlines()
-            lines = [line.strip() for line in data if line.strip()]
-            reply = random.choice(lines) if lines else "No training data."
-        finally:
-            dataset_path.unlink(missing_ok=True)
+        reply = "модель обучается…"
         await update.message.reply_text(reply)
         inhale(question, reply)
         await exhale(update.effective_chat.id, context)
@@ -113,6 +113,10 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "--seed",
             str(seed),
             "--quiet",
+            "--top-k",
+            str(TOP_K),
+            "--temperature",
+            str(TEMPERATURE),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -195,6 +199,7 @@ async def run_training(
                 logging.debug("Training stdout: %s", stdout.decode())
             if stderr:
                 logging.debug("Training stderr: %s", stderr.decode())
+            warmup_model()
         else:
             logging.error(
                 "Training failed with code %s", proc.returncode
@@ -247,7 +252,9 @@ def build_dataset(latest_line: str | None = None) -> Path:
             dir_path = Path(directory)
             if not dir_path.exists():
                 continue
-            for file in dir_path.glob("*"):
+            for file in dir_path.rglob("*"):
+                if not file.is_file():
+                    continue
                 if file.suffix.lower() in {".txt", ".md"}:
                     write_line(file.read_text(encoding="utf-8"))
                 elif file.suffix.lower() == ".csv":

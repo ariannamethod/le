@@ -67,6 +67,8 @@ async def test_respond_produces_one_line(monkeypatch, tmp_path):
     assert "--num-samples" in captured["args"] and "1" in captured["args"]
     assert "--prompt" in captured["args"] and "hi" in captured["args"]
     assert "--quiet" in captured["args"]
+    assert "--top-k" in captured["args"] and str(tg.TOP_K) in captured["args"]
+    assert "--temperature" in captured["args"] and str(tg.TEMPERATURE) in captured["args"]
     assert "--work-dir" in captured["args"]
     assert str(names_dir) in captured["args"]
     assert "\n" not in replies[0]
@@ -124,15 +126,11 @@ async def test_respond_handles_timeout(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_respond_returns_line_when_model_missing(monkeypatch, tmp_path):
+async def test_respond_reports_training_when_model_missing(monkeypatch, tmp_path):
     names_dir = tmp_path / "names"
     names_dir.mkdir()
     tg.WORK_DIR = names_dir
     monkeypatch.chdir(tmp_path)
-
-    dataset_file = tmp_path / "dataset.txt"
-    dataset_file.write_text("line1\nline2\n")
-    monkeypatch.setattr(tg, "build_dataset", lambda q=None: dataset_file)
 
     started = {"flag": False}
 
@@ -142,7 +140,6 @@ async def test_respond_returns_line_when_model_missing(monkeypatch, tmp_path):
     tg.run_training = dummy_run_training
     tg.TRAINING_TASK = None
 
-    monkeypatch.setattr(tg.random, "choice", lambda seq: seq[0])
     monkeypatch.setattr(tg, "inhale", lambda q, r: None)
 
     async def dummy_exhale(chat_id, context):
@@ -163,8 +160,7 @@ async def test_respond_returns_line_when_model_missing(monkeypatch, tmp_path):
     )
 
     await tg.respond(update, None)
-    assert replies == ["line1"]
+    assert replies == ["модель обучается…"]
     assert tg.TRAINING_TASK is not None
     await tg.TRAINING_TASK
     assert started["flag"]
-    assert "\n" not in replies[0]
