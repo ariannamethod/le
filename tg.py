@@ -7,6 +7,11 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+import torch
+# Принудительно использовать CPU
+torch.set_num_threads(4)  # Ограничиваем количество потоков для лучшей производительности
+os.environ["CUDA_VISIBLE_DEVICES"] = ""  # Скрываем все GPU устройства
+
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import (
