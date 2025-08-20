@@ -15,14 +15,14 @@ from memory import Memory  # noqa: E402
 
 
 def test_update_repo_hash_detects_changes(tmp_path, caplog, monkeypatch):
-    fake_mol = types.ModuleType("molecule")
+    fake_mol = types.ModuleType("tg")
 
     async def dummy_run_training(chat_id, context, extra_dataset=None):
         return None
 
     fake_mol.run_training = dummy_run_training
     fake_mol.TRAINING_TASK = None
-    monkeypatch.setitem(sys.modules, "molecule", fake_mol)
+    monkeypatch.setitem(sys.modules, "tg", fake_mol)
 
     inhale_exhale = importlib.reload(importlib.import_module("inhale_exhale"))
     with Memory(path=str(tmp_path / "mem.db")) as mem:
@@ -46,14 +46,14 @@ def test_update_repo_hash_detects_changes(tmp_path, caplog, monkeypatch):
 
 
 def test_update_repo_hash_ignores_temp_files(tmp_path, monkeypatch):
-    fake_mol = types.ModuleType("molecule")
+    fake_mol = types.ModuleType("tg")
 
     async def dummy_run_training(chat_id, context, extra_dataset=None):
         return None
 
     fake_mol.run_training = dummy_run_training
     fake_mol.TRAINING_TASK = None
-    monkeypatch.setitem(sys.modules, "molecule", fake_mol)
+    monkeypatch.setitem(sys.modules, "tg", fake_mol)
 
     inhale_exhale = importlib.reload(importlib.import_module("inhale_exhale"))
     with Memory(path=str(tmp_path / "mem.db")) as mem:
@@ -77,7 +77,7 @@ def test_update_repo_hash_ignores_temp_files(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_exhale_triggers_training_when_needed(tmp_path, monkeypatch):
-    fake_mol = types.ModuleType("molecule")
+    fake_mol = types.ModuleType("tg")
     event = asyncio.Event()
 
     async def dummy_run_training(chat_id, context, extra_dataset=None):
@@ -86,7 +86,7 @@ async def test_exhale_triggers_training_when_needed(tmp_path, monkeypatch):
 
     fake_mol.run_training = dummy_run_training
     fake_mol.TRAINING_TASK = None
-    monkeypatch.setitem(sys.modules, "molecule", fake_mol)
+    monkeypatch.setitem(sys.modules, "tg", fake_mol)
 
     inhale_exhale = importlib.reload(importlib.import_module("inhale_exhale"))
     with Memory(path=str(tmp_path / "mem.db")) as mem:
@@ -102,7 +102,7 @@ async def test_exhale_triggers_training_when_needed(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_exhale_skips_when_not_needed(tmp_path, monkeypatch):
-    fake_mol = types.ModuleType("molecule")
+    fake_mol = types.ModuleType("tg")
     started = {"flag": False}
 
     async def dummy_run_training(chat_id, context, extra_dataset=None):
@@ -110,7 +110,7 @@ async def test_exhale_skips_when_not_needed(tmp_path, monkeypatch):
 
     fake_mol.run_training = dummy_run_training
     fake_mol.TRAINING_TASK = None
-    monkeypatch.setitem(sys.modules, "molecule", fake_mol)
+    monkeypatch.setitem(sys.modules, "tg", fake_mol)
 
     inhale_exhale = importlib.reload(importlib.import_module("inhale_exhale"))
     with Memory(path=str(tmp_path / "mem.db")) as mem:
@@ -124,7 +124,7 @@ async def test_exhale_skips_when_not_needed(tmp_path, monkeypatch):
 async def test_startup_triggers_training_when_model_missing(
     tmp_path, monkeypatch
 ):
-    fake_mol = types.ModuleType("molecule")
+    fake_mol = types.ModuleType("tg")
     event = asyncio.Event()
 
     async def dummy_run_training(chat_id, context, extra_dataset=None):
@@ -132,7 +132,7 @@ async def test_startup_triggers_training_when_model_missing(
 
     fake_mol.run_training = dummy_run_training
     fake_mol.TRAINING_TASK = None
-    monkeypatch.setitem(sys.modules, "molecule", fake_mol)
+    monkeypatch.setitem(sys.modules, "tg", fake_mol)
     monkeypatch.chdir(tmp_path)
 
     inhale_exhale = importlib.reload(importlib.import_module("inhale_exhale"))
@@ -146,7 +146,7 @@ async def test_startup_triggers_training_when_model_missing(
 
 @pytest.mark.asyncio
 async def test_retrains_on_successive_data_additions(tmp_path, monkeypatch):
-    fake_mol = types.ModuleType("molecule")
+    fake_mol = types.ModuleType("tg")
     calls: list[int] = []
 
     async def dummy_run_training(chat_id, context, extra_dataset=None):
@@ -155,7 +155,7 @@ async def test_retrains_on_successive_data_additions(tmp_path, monkeypatch):
 
     fake_mol.run_training = dummy_run_training
     fake_mol.TRAINING_TASK = None
-    monkeypatch.setitem(sys.modules, "molecule", fake_mol)
+    monkeypatch.setitem(sys.modules, "tg", fake_mol)
 
     inhale_exhale = importlib.reload(importlib.import_module("inhale_exhale"))
     with Memory(path=str(tmp_path / "mem.db")) as mem:

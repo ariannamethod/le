@@ -1,1 +1,1 @@
-worker: python molecule.py
+worker: python tg.py
