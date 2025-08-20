@@ -88,7 +88,7 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not model_path.exists():
         if TRAINING_TASK is None or TRAINING_TASK.done():
             TRAINING_TASK = asyncio.create_task(run_training(None, None))
-        reply = "модель обучается…"
+        reply = question
         await update.message.reply_text(reply)
         inhale(question, reply)
         await exhale(update.effective_chat.id, context)
