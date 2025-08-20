@@ -98,6 +98,22 @@ def test_build_dataset_reads_nested_files(tmp_path, monkeypatch):
         mem.close()
 
 
+def test_build_dataset_deduplicates_memory(tmp_path, monkeypatch):
+    importlib.reload(tg)
+    mem = memory.Memory(str(tmp_path / "memory.db"))
+    mem.record_message("hello", "a1")
+    mem.record_message("hello", "a2")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(tg, "memory", mem)
+    dataset_path = tg.build_dataset()
+    try:
+        lines = dataset_path.read_text(encoding="utf-8").splitlines()
+        assert lines.count("hello") == 1
+    finally:
+        dataset_path.unlink()
+        mem.close()
+
+
 def test_update_repo_hash_respects_env_limit(tmp_path, monkeypatch):
     limit = 100
     monkeypatch.setenv("LE_TRAINING_LIMIT_BYTES", str(limit))
