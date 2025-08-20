@@ -76,6 +76,28 @@ def test_build_dataset_reads_various_file_types(tmp_path, monkeypatch):
         mem.close()
 
 
+def test_build_dataset_reads_nested_files(tmp_path, monkeypatch):
+    blood_dir = tmp_path / "blood"
+    blood_dir.mkdir()
+    (blood_dir / "b.txt").write_text("blood text")
+
+    nested_dir = tmp_path / "datasets" / "sub"
+    nested_dir.mkdir(parents=True)
+    (nested_dir / "n.txt").write_text("nested")
+
+    importlib.reload(tg)
+    mem = memory.Memory(str(tmp_path / "memory.db"))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(tg, "memory", mem)
+    dataset_path = tg.build_dataset()
+    try:
+        lines = dataset_path.read_text(encoding="utf-8").splitlines()
+        assert "nested" in lines
+    finally:
+        dataset_path.unlink()
+        mem.close()
+
+
 def test_update_repo_hash_respects_env_limit(tmp_path, monkeypatch):
     limit = 100
     monkeypatch.setenv("LE_TRAINING_LIMIT_BYTES", str(limit))
