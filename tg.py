@@ -294,7 +294,12 @@ def build_dataset(latest_line: str | None = None) -> Path:
                 if not file.is_file():
                     continue
                 if file.suffix.lower() in {".txt", ".md"}:
-                    write_line(file.read_text(encoding="utf-8"))
+                    # Читаем файл построчно, а не целиком
+                    for line in file.read_text(encoding="utf-8").splitlines():
+                        line = line.strip()
+                        if line and line not in seen:
+                            seen.add(line)
+                            write_line(line)
                 elif file.suffix.lower() == ".csv":
                     with file.open(newline="", encoding="utf-8") as f:
                         reader = csv.reader(f)
