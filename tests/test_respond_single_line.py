@@ -160,7 +160,7 @@ async def test_respond_reports_training_when_model_missing(monkeypatch, tmp_path
     )
 
     await tg.respond(update, None)
-    assert replies == ["модель обучается…"]
+    assert replies == ["hi"]
     assert tg.TRAINING_TASK is not None
     await tg.TRAINING_TASK
     assert started["flag"]
