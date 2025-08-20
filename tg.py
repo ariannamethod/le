@@ -102,15 +102,14 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         model_path = WORK_DIR / "model.pt"
 
-        # ЕСЛИ МОДЕЛЬ НЕ СУЩЕСТВУЕТ - НЕ ОТВЕЧАЕМ ВООБЩЕ, ТОЛЬКО ЗАПУСКАЕМ ОБУЧЕНИЕ
+        # ЕСЛИ МОДЕЛЬ НЕ СУЩЕСТВУЕТ - ЗАПУСКАЕМ ОБУЧЕНИЕ, НО ПРОДОЛЖАЕМ ГЕНЕРИРОВАТЬ!
         if not model_path.exists():
             async with training_lock:
                 if TRAINING_TASK is None or TRAINING_TASK.done():
                     TRAINING_TASK = asyncio.create_task(run_training(None, None))
-            # НЕ СОХРАНЯЕМ В ПАМЯТЬ И НЕ ОТВЕЧАЕМ!
-            return
+            # НЕ ВОЗВРАЩАЕМСЯ! ПРОДОЛЖАЕМ ГЕНЕРИРОВАТЬ!
 
-        # ИСПОЛЬЗУЕМ LE.PY ДЛЯ ГЕНЕРАЦИИ С АЛГОРИТМОМ ЗАРЯЖЕННОГО СЛОВА
+        # ВСЕГДА ИСПОЛЬЗУЕМ LE.PY ДЛЯ ГЕНЕРАЦИИ С АЛГОРИТМОМ ЗАРЯЖЕННОГО СЛОВА
         dataset_path = build_dataset()
         try:
             seed = random.randint(0, 2**31 - 1)
@@ -166,7 +165,7 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         await update.message.reply_text(reply)
         
-        # СОХРАНЯЕМ ТОЛЬКО РЕАЛЬНЫЕ ДИАЛОГИ
+        # СОХРАНЯЕМ ВСЕ ДИАЛОГИ ДЛЯ ЭВОЛЮЦИИ
         inhale(question, reply)
         
         # ПРОВЕРЯЕМ ФОНОВОЕ ДООБУЧЕНИЕ
