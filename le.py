@@ -10,6 +10,7 @@ import time
 import math
 import argparse
 from dataclasses import dataclass
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -473,7 +474,7 @@ def generate(model, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k
 
     return idx
 
-def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens: int = 15, temperature: float = 0.8, top_k: int | None = 40, top_p: float | None = 0.9) -> str:
+def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens: int = 15, temperature: float = 0.8, top_k: Optional[int] = 40, top_p: Optional[float] = 0.9) -> str:
     """Generate text conditioned on a prompt and conversation history.
 
     The ``prompt`` is tokenized, the token with the highest information gain
@@ -1161,4 +1162,6 @@ if __name__ == '__main__':
 
         memory.set_meta('data_hash', data_hash)
 
-    chat(model, args.input_file, memory)
+    # НЕ запускаем chat если это тренировка через tg.py
+    if not args.sample_only:
+        chat(model, args.input_file, memory)
