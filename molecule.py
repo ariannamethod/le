@@ -51,7 +51,7 @@ class LEMolecule:
             # 2. 🌐 OBJECTIVITY
             objectivity_result = search_objectivity_sync(user_message)
             if objectivity_result and objectivity_result.get('influence_strength', 0) > 0.1:
-                result['prefixes'].append("🌐")
+                pass
             
             # 3. 😰 PAIN
             pain_result = trigger_pain(user_message)
@@ -215,7 +215,14 @@ class LEMolecule:
             sentence = sentence[0].upper() + sentence[1:] + "."
             sentences.append(sentence)
         
-        return " ".join(sentences)
+        result = " ".join(sentences)
+        
+        # ПУНКТУАЦИЯ: заглавные буквы после точек
+        import re
+        result = re.sub(r'([.!?]\s+)([a-z])', lambda m: m.group(1) + m.group(2).upper(), result)
+        result = re.sub(r'([.!?])([a-z])', lambda m: m.group(1) + ' ' + m.group(2).upper(), result)
+        
+        return result
 
 
 # Глобальный экземпляр
