@@ -18,6 +18,7 @@ from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from memory import Memory
+from subjectivity import filter_message
 import metrics
 import response_log
 
@@ -482,6 +483,18 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
     The returned string always begins with a capital letter and ends with a
     period.
     """
+    
+    # 🌊 РЕЗОНАНСНЫЙ ФИЛЬТР - сердечная мышца LE
+    try:
+        filter_result = filter_message(prompt)
+        max_new_tokens = filter_result['max_tokens']
+        temperature = filter_result['temperature'] 
+        resonance_prefix = filter_result['prefix']
+        print(f"🌊 Subjectivity filter: resonance={filter_result['resonance_score']:.2f}, "
+              f"tokens={max_new_tokens}, temp={temperature:.2f}")
+    except Exception as e:
+        print(f"⚠️ Subjectivity filter error: {e}")
+        resonance_prefix = ""  # Безопасный fallback
 
     def _encode(text: str) -> torch.Tensor:
         return torch.tensor([dataset.stoi[ch] for ch in text if ch in dataset.stoi], dtype=torch.long)
@@ -615,6 +628,10 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
                 text = text[0].upper() + text[1:] if len(text) > 1 else text.upper()
             if not text.endswith('.'):
                 text += '.'
+        
+        # Добавляем резонансный префикс (эмоджи молнии) в начало
+        if resonance_prefix:
+            text = f"{resonance_prefix} {text}"
         
         return text
 
