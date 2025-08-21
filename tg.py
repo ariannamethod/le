@@ -24,7 +24,7 @@ from telegram.ext import (
     filters,
 )
 
-from inhale_exhale import inhale, exhale, memory
+from molecule import process_user_message
 import metrics
 
 load_dotenv()
@@ -100,76 +100,39 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         active_users.add(user_id)
     
     try:
+        # 🧬 ИСПОЛЬЗУЕМ MOLECULE - ЦЕНТРАЛЬНЫЙ МОЗГ LE!
+        molecule_context = {
+            'chat_id': update.effective_chat.id,
+            'user_id': user_id,
+            'message_id': update.message.message_id
+        }
+        
+        # Обрабатываем через molecule
+        result = process_user_message(question, molecule_context)
+        
+        # Получаем ответ
+        reply = result.get('generated_response', 'Signal lost. Reconnecting.')
+        
+        # Отправляем ответ
+        await update.message.reply_text(reply)
+        
+        # Логируем успех
+        if result.get('success', False):
+            logging.info(f"🧬 Molecule response: prefixes={result.get('prefixes', [])}, "
+                        f"time={result.get('processing_time', 0):.2f}s")
+        else:
+            logging.warning(f"⚠️ Molecule fallback used: {result.get('error', 'unknown error')}")
+        
+        # Запускаем обучение если нужно (фоново)
         model_path = WORK_DIR / "model.pt"
-
-        # ЕСЛИ МОДЕЛЬ НЕ СУЩЕСТВУЕТ - ЗАПУСКАЕМ ОБУЧЕНИЕ, НО ПРОДОЛЖАЕМ ГЕНЕРИРОВАТЬ!
         if not model_path.exists():
             async with training_lock:
                 if TRAINING_TASK is None or TRAINING_TASK.done():
                     TRAINING_TASK = asyncio.create_task(run_training(None, None))
-            # НЕ ВОЗВРАЩАЕМСЯ! ПРОДОЛЖАЕМ ГЕНЕРИРОВАТЬ!
-
-        # ВСЕГДА ИСПОЛЬЗУЕМ LE.PY ДЛЯ ГЕНЕРАЦИИ С АЛГОРИТМОМ ЗАРЯЖЕННОГО СЛОВА
-        dataset_path = build_dataset()
-        try:
-            seed = random.randint(0, 2**31 - 1)
-            proc = await asyncio.create_subprocess_exec(
-                "python",
-                "le.py",
-                "--type",
-                "transformer",
-                "-i",
-                str(dataset_path),
-                "--work-dir",
-                str(WORK_DIR),
-                "--sample-only",
-                "--prompt",
-                question,
-                "--num-samples",
-                "1",
-                "--seed",
-                str(seed),
-                "--quiet",
-                "--top-k",
-                str(TOP_K),
-                "--temperature",
-                str(TEMPERATURE),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            try:
-                stdout, stderr = await asyncio.wait_for(
-                    proc.communicate(), timeout=SAMPLE_TIMEOUT
-                )
-            except asyncio.TimeoutError:
-                proc.kill()
-                await proc.communicate()
-                logging.exception("Sampling timed out")
-                reply = "..."
-            else:
-                if proc.returncode == 0:
-                    lines = [
-                        line
-                        for line in stdout.decode().splitlines()
-                        if line.strip()
-                    ]
-                    reply = lines[-1] if lines else "."
-                else:
-                    logging.error("Sampling failed: %s", stderr.decode())
-                    reply = "."
-        except Exception:
-            logging.exception("Sampling error")
-            reply = "."
-        finally:
-            dataset_path.unlink(missing_ok=True)
-
-        await update.message.reply_text(reply)
         
-        # СОХРАНЯЕМ ВСЕ ДИАЛОГИ ДЛЯ ЭВОЛЮЦИИ
-        inhale(question, reply)
-        
-        # ВЫЗЫВАЕМ EXHALE ДЛЯ ФОНОВОГО ДООБУЧЕНИЯ
-        await exhale(update.effective_chat.id, context)
+    except Exception as e:
+        logging.exception(f"❌ Critical error in respond: {e}")
+        await update.message.reply_text("System error. Rebooting neural pathways.")
         
     finally:
         if user_id is not None:
