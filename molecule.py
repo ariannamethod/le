@@ -16,6 +16,7 @@ from subjectivity import filter_message
 from objectivity import search_objectivity_sync
 from sixthsense import predict_chaos, modulate_by_chaos
 from pain import trigger_pain, modulate_by_pain
+from le import sample_prompt
 import metrics
 import response_log
 
@@ -108,7 +109,6 @@ class LEMolecule:
                     result['prefixes'].append(chaos_prefix)
             
             # 5. 🧠 ГЕНЕРАЦИЯ
-            from le import sample_prompt
             if hasattr(self, 'model') and hasattr(self, 'dataset') and self.model and self.dataset:
                 response = sample_prompt(user_message, self.model, self.dataset, self.memory)
             else:
