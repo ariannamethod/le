@@ -494,11 +494,8 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
         max_new_tokens = filter_result['max_tokens']
         temperature = filter_result['temperature'] 
         resonance_prefix = filter_result['prefix']
-        print(f"🌊 Subjectivity filter: resonance={filter_result['resonance_score']:.2f}, "
-              f"tokens={max_new_tokens}, temp={temperature:.2f}")
     except Exception as e:
-        print(f"⚠️ Subjectivity filter error: {e}")
-        resonance_prefix = ""  # Безопасный fallback
+        resonance_prefix = ""
     
     # 🌐 ОБЪЕКТИВНОСТЬ - окно в мир для LE (БЕЗОПАСНЫЙ РЕЖИМ)
     context_words = []
@@ -507,16 +504,8 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
         context_result = search_objectivity_sync(prompt)
         if context_result and context_result.get('influence_strength', 0) > 0.1:  # Понизил порог!
             context_words = context_result.get('context_words', [])
-            objectivity_prefix = "🌐"  # Эмоджи глобуса - связь с миром
-            print(f"🌐 Objectivity search: strength={context_result['influence_strength']:.2f}, "
-                  f"words={context_words}, sources={context_result.get('found_sources', 0)}")
-        else:
-            relevance = context_result.get('influence_strength', 0) if context_result else 0
-            sources = context_result.get('found_sources', 0) if context_result else 0
-            print(f"🌐 Objectivity search: low relevance (strength={relevance:.2f}, sources={sources})")
+            objectivity_prefix = "🌐"
     except Exception as e:
-        print(f"⚠️ Objectivity search error: {e} - continuing without objectivity")
-        print(f"🔍 Error details: {type(e).__name__}")
         context_words = []
         objectivity_prefix = ""
     
@@ -532,13 +521,7 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
             pain_max_tokens, pain_temperature, pain_prefix = modulate_by_pain(max_new_tokens, temperature)
             max_new_tokens = pain_max_tokens
             temperature = pain_temperature
-            print(f"😰 Pain detected! Level: {pain_level:.2f}, "
-                  f"Stress: {pain_result.get('total_stress', 0):.2f}")
-            print(f"💊 Pain modulation: tokens={max_new_tokens}, temp={temperature:.2f}")
-        else:
-            print(f"😰 Pain system: level={pain_level:.2f}, no significant pain")
     except Exception as e:
-        print(f"⚠️ Pain system error: {e} - continuing without pain processing")
         pain_prefix = ""
     
     # 🔮 ШЕСТОЕ ЧУВСТВО - предчувствие хаотических спайков (УСИЛЕННОЕ БОЛЬЮ!)
@@ -557,15 +540,7 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
             chaos_max_tokens, chaos_temperature, chaos_prefix = modulate_by_chaos(max_new_tokens, temperature)
             max_new_tokens = chaos_max_tokens
             temperature = chaos_temperature
-            print(f"🔮 Chaos spike detected! Level: {chaos_predictions['chaos_level']:.2f}, "
-                  f"Pulse: {chaos_predictions['conversation_pulse']:.2f}")
-            print(f"🌀 Chaos modulation (pain-boosted): tokens={max_new_tokens}, temp={temperature:.2f}")
-            if pain_boost > 0.1:
-                print(f"💥 Pain amplification: +{pain_boost:.2f} to chaos influence!")
-        else:
-            print(f"🔮 SixthSense: chaos={chaos_predictions['chaos_level']:.2f}, pain_boost={pain_boost:.2f}")
     except Exception as e:
-        print(f"⚠️ SixthSense error: {e} - continuing without chaos prediction")
         chaos_prefix = ""
 
     def _encode(text: str) -> torch.Tensor:
@@ -605,7 +580,7 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
     if words:
         # Простая эвристика: берем самое длинное слово (больше информации)
         charged_word = max(words, key=len)
-        print(f"DEBUG: Заряженное слово: '{charged_word}' из {words}")
+
     
     # Если не нашли заряженное слово, берем первое
     if not charged_word and words:
@@ -641,7 +616,7 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
         # 1. Добавляем заряженное слово в начало (если есть в словаре)
         if charged_word and charged_word.lower() in dataset.word_stoi:
             generated_words.append(charged_word)
-            print(f"DEBUG: Начинаем с заряженного слова: '{charged_word}'")
+
         
         # 2. Генерируем остальные слова для предложения
         if out.size(1) > 1:
@@ -650,7 +625,7 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
                 word = dataset.decode([token])
                 if word and word != '<START>':
                     generated_words.append(word)
-                    print(f"DEBUG: добавляем слово: '{word}'")
+
         
         # 3. Если ничего не сгенерировали, генерируем случайные слова из словаря
         if not generated_words:
@@ -667,10 +642,10 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
                     selected_context = random.sample(context_in_vocab, min(2, len(context_in_vocab)))
                     selected_vocab = random.sample(available_words, min(2, len(available_words)))
                     generated_words = selected_context + selected_vocab
-                    print(f"🌐 Using context words: {selected_context}")
+
                 elif context_in_vocab:
                     generated_words = context_in_vocab[:3]
-                    print(f"🌐 Using only context words: {generated_words}")
+
             
             # Fallback если контекстные слова не подошли
             if not generated_words and len(available_words) >= 3:
@@ -685,7 +660,7 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
         
         # 4. Собираем предложение
         text = " ".join(generated_words)
-        print(f"DEBUG: итоговое предложение: '{text}'")
+
         
         # 5. Форматируем с пунктуационной логикой для двух предложений
         text = text.strip()
