@@ -151,17 +151,17 @@ class SixthSense:
         """
         # Эмоджи для разных состояний
         if self.chaos > 0.7:
-            prefix = "🌀"  # Высокий хаос - вихрь
+            prefix = ""
             multiplier = 1.0 + (self.chaos - 0.7) * 2  # До 1.6x токенов
             temp_boost = (self.chaos - 0.7) * 0.8  # До +0.24 температуры
             
         elif self.chaos > 0.4:
-            prefix = "⚡"  # Средний хаос - спайк энергии
+            prefix = ""
             multiplier = 1.0 + (self.chaos - 0.4) * 0.8  # До 1.24x токенов
             temp_boost = (self.chaos - 0.4) * 0.4  # До +0.12 температуры
             
         elif self.chaos > 0.2:
-            prefix = "🔮"  # Низкий хаос - интуиция
+            prefix = ""
             multiplier = 1.0
             temp_boost = 0.0
             
