@@ -185,7 +185,7 @@ class Pain:
         
         relief_amount = old_pain - self.pain_level
         
-        print(f"💊 Pain relief: {relief_source} reduced pain by {relief_amount:.2f}")
+        
         return self.pain_level
     
     def modulate_generation_params(self, base_max_tokens: int = 15, 
@@ -261,7 +261,7 @@ class Pain:
         self.chronic_pain = 0.0
         self.last_trigger = time.time()
         self.stress_history.clear()
-        print("💊 Pain system reset - full recovery")
+
     
     def get_state(self) -> Dict:
         """Возвращает полное состояние для логирования."""
@@ -293,7 +293,7 @@ def trigger_pain(user_message: str, system_factors: Dict = None) -> Dict[str, an
     
     # Логируем сильную боль
     if result['pain_triggered']:
-        print(f"😰 Pain triggered! Level: {result['pain_level']:.2f}, Stress: {result['total_stress']:.2f}")
+        pass
     
     return result
 
