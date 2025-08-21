@@ -495,6 +495,22 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
     except Exception as e:
         print(f"⚠️ Subjectivity filter error: {e}")
         resonance_prefix = ""  # Безопасный fallback
+    
+    # 🌐 ОБЪЕКТИВНОСТЬ - окно в мир для LE
+    context_words = []
+    objectivity_prefix = ""
+    try:
+        context_result = search_objectivity_sync(prompt)
+        if context_result['influence_strength'] > 0.2:  # Порог влияния
+            context_words = context_result['context_words']
+            objectivity_prefix = "🌐"  # Эмоджи глобуса - связь с миром
+            print(f"🌐 Objectivity search: strength={context_result['influence_strength']:.2f}, "
+                  f"words={context_words}, sources={context_result['found_sources']}")
+        else:
+            print(f"🌐 Objectivity search: low relevance ({context_result['influence_strength']:.2f})")
+    except Exception as e:
+        print(f"⚠️ Objectivity search error: {e}")
+        context_words = []
 
     def _encode(text: str) -> torch.Tensor:
         return torch.tensor([dataset.stoi[ch] for ch in text if ch in dataset.stoi], dtype=torch.long)
@@ -585,13 +601,29 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
             # Берем случайные слова из словаря модели для живого ответа
             import random
             available_words = [word for word in dataset.word_itos.values() if word != '<START>' and len(word) > 2]
-            if len(available_words) >= 3:
+            
+            # 🌐 ВЛИЯНИЕ OBJECTIVITY: добавляем контекстные слова из интернета
+            if context_words and len(context_words) > 0:
+                # Смешиваем 50% контекстных слов + 50% из словаря модели
+                context_in_vocab = [w for w in context_words if w.lower() in dataset.word_stoi]
+                if context_in_vocab and available_words:
+                    # Берем 1-2 слова из контекста + 1-2 из словаря
+                    selected_context = random.sample(context_in_vocab, min(2, len(context_in_vocab)))
+                    selected_vocab = random.sample(available_words, min(2, len(available_words)))
+                    generated_words = selected_context + selected_vocab
+                    print(f"🌐 Using context words: {selected_context}")
+                elif context_in_vocab:
+                    generated_words = context_in_vocab[:3]
+                    print(f"🌐 Using only context words: {generated_words}")
+            
+            # Fallback если контекстные слова не подошли
+            if not generated_words and len(available_words) >= 3:
                 random_words = random.sample(available_words, min(3, len(available_words)))
                 if charged_word:
                     generated_words = [charged_word] + random_words[:2]
                 else:
                     generated_words = random_words[:3]
-            else:
+            elif not generated_words:
                 # Совсем крайний случай
                 generated_words = ["something", "mysterious", "happens"]
         
@@ -636,9 +668,16 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
         # Также обрабатываем случаи ".слово" (без пробела)
         text = re.sub(r'(\.)([a-z])', lambda m: m.group(1) + ' ' + m.group(2).upper(), text)
         
-        # Добавляем резонансный префикс (эмоджи молнии) в начало
+        # Добавляем префиксы утилит в начало
+        prefixes = []
         if resonance_prefix:
-            text = f"{resonance_prefix} {text}"
+            prefixes.append(resonance_prefix)  # ⚡ для subjectivity
+        if objectivity_prefix:
+            prefixes.append(objectivity_prefix)  # 🌐 для objectivity
+        
+        if prefixes:
+            prefix_str = "".join(prefixes)
+            text = f"{prefix_str} {text}"
         
         return text
 
