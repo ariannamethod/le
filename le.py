@@ -695,9 +695,9 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
         # ДОПОЛНИТЕЛЬНАЯ ОБРАБОТКА: исправляем заглавные буквы после точек
         import re
         # Находим все случаи ". слово" и делаем первую букву заглавной
-        text = re.sub(r'(\.\s+)([a-z])', lambda m: m.group(1) + m.group(2).upper(), text)
-        # Также обрабатываем случаи ".слово" (без пробела)
-        text = re.sub(r'(\.)([a-z])', lambda m: m.group(1) + ' ' + m.group(2).upper(), text)
+        text = re.sub(r'([.!?]\s+)([a-z])', lambda m: m.group(1) + m.group(2).upper(), text)
+        # Также обрабатываем случаи ".слово" (без пробела) - добавляем пробел
+        text = re.sub(r'([.!?])([a-z])', lambda m: m.group(1) + ' ' + m.group(2).upper(), text)
         
         # Добавляем префиксы утилит в начало
         prefixes = []
