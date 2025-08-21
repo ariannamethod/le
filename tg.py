@@ -113,10 +113,8 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             'message_id': update.message.message_id
         }
         
-        # Обрабатываем через molecule в отдельном потоке
-        import asyncio
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, process_user_message, question, molecule_context)
+        # Обрабатываем через molecule
+        result = process_user_message(question, molecule_context)
         
         # Получаем ответ
         reply = result.get('generated_response', 'Signal lost. Reconnecting.')
