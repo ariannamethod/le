@@ -1162,6 +1162,4 @@ if __name__ == '__main__':
 
         memory.set_meta('data_hash', data_hash)
 
-    # Запускаем интерактивный чат только если не sample-only режим
-    if not args.sample_only:
-        chat(model, args.input_file, memory)
+    chat(model, args.input_file, memory)
