@@ -112,9 +112,18 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             'user_id': user_id,
             'message_id': update.message.message_id
         }
-        
-        # Обрабатываем через molecule
-        result = process_user_message(question, molecule_context)
+
+        # Обрабатываем через molecule с таймаутом
+        try:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(process_user_message, question, molecule_context),
+                timeout=SAMPLE_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            logging.warning(f"⏰ Timeout processing message for user {user_id}")
+            if user_id is not None:
+                active_users.discard(user_id)
+            return
         
         # Получаем ответ
         reply = result.get('generated_response', 'Signal lost. Reconnecting.')
