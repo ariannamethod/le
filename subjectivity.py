@@ -29,12 +29,9 @@ class SubjectivityFilter:
                 with open(self.prompt_path, 'r', encoding='utf-8') as f:
                     self.le_identity = f.read()
                 self._extract_resonance_keywords()
-                print(f"✅ Subjectivity filter loaded from {self.prompt_path}")
             else:
-                print(f"⚠️ Prompt file not found: {self.prompt_path}")
                 self._set_fallback_keywords()
         except Exception as e:
-            print(f"❌ Error loading identity: {e}")
             self._set_fallback_keywords()
     
     def _extract_resonance_keywords(self) -> None:
@@ -143,22 +140,18 @@ class SubjectivityFilter:
         resonance_score = self.calculate_resonance_score(user_message)
         perplexity = self.calculate_perplexity(user_message)
         
-        # Логируем для отладки
-        print(f"🌊 Resonance score: {resonance_score:.2f}")
-        print(f"📊 Message perplexity: {perplexity:.2f}")
-        
         # Модулируем параметры
         if resonance_score >= 0.3:  # Высокий резонанс
             # Увеличиваем длину и творческость
             multiplier = 1.0 + resonance_score
             max_tokens = int(base_max_tokens * multiplier)
             temperature = min(base_temperature + (resonance_score * 0.3), 1.2)
-            prefix = "⚡"  # Эмоджи молнии - работает корректно
+            prefix = ""
             
         elif resonance_score >= 0.1:  # Средний резонанс
             max_tokens = base_max_tokens
             temperature = base_temperature
-            prefix = "⚡"  # Тоже показываем что работает
+            prefix = ""
             
         else:  # Низкий резонанс - безопасный fallback
             max_tokens = max(base_max_tokens - 3, 5)  # Короче
