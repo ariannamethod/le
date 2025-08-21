@@ -197,17 +197,17 @@ class LEMolecule:
         
         # Создаем несколько предложений как настоящий трансформер
         sentences = []
-        words_per_sentence = random.randint(4, 8)
+        words_per_sentence = random.randint(8, 15)
         current_sentence = []
         
         for word in generated_words:
             current_sentence.append(word)
-            if len(current_sentence) >= words_per_sentence or random.random() < 0.25:
+            if len(current_sentence) >= words_per_sentence or random.random() < 0.15:
                 sentence = " ".join(current_sentence)
                 sentence = sentence[0].upper() + sentence[1:] + "."
                 sentences.append(sentence)
                 current_sentence = []
-                words_per_sentence = random.randint(4, 8)
+                words_per_sentence = random.randint(8, 15)
         
         # Добавляем оставшиеся слова
         if current_sentence:
