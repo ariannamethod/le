@@ -1,7 +1,7 @@
 """
 Train and sample from character-level language models using a single script.
 The program reads a text file with one item per line and learns to generate
-similar text through an autoregressive Transformer-based neural network. 
+similar text through an autoregressive Transformer-based neural network.
 """
 
 import os
@@ -504,7 +504,7 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
         context_result = search_objectivity_sync(prompt)
         if context_result and context_result.get('influence_strength', 0) > 0.1:  # Понизил порог!
             context_words = context_result.get('context_words', [])
-            objectivity_prefix = "🌐"
+            objectivity_prefix = ""
     except Exception as e:
         context_words = []
         objectivity_prefix = ""
