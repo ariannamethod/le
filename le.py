@@ -1,7 +1,7 @@
 """
 Train and sample from character-level language models using a single script.
 The program reads a text file with one item per line and learns to generate
-similar text through an autoregressive Transformer-based neural network.
+similar text through an autoregressive Transformer-based neural network. 
 """
 
 import os
