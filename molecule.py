@@ -29,7 +29,41 @@ class LEMolecule:
         self.memory = Memory()
         self.model = None
         self.dataset = None
+        self._load_model_if_exists()
         print("🧬 LEMolecule initialized - brain online")
+    
+    def _load_model_if_exists(self):
+        """Загружает модель и датасет если они существуют."""
+        model_path = self.work_dir / "model.pt"
+        if model_path.exists():
+            try:
+                # Импортируем LE компоненты для загрузки модели
+                import torch
+                from le import create_datasets, ModelConfig, Transformer
+                
+                # Создаем временный датасет для получения vocab_size
+                temp_dataset, _ = create_datasets("blood/lines01.txt")
+                vocab_size = temp_dataset.get_vocab_size()
+                block_size = temp_dataset.get_output_length()
+                
+                # Создаем конфигурацию модели
+                config = ModelConfig(vocab_size=vocab_size, block_size=block_size,
+                                   n_layer=4, n_head=4, n_embd=64, n_embd2=64)
+                
+                # Создаем и загружаем модель
+                self.model = Transformer(config)
+                self.model.load_state_dict(torch.load(model_path, map_location='cpu'))
+                self.model.eval()
+                self.dataset = temp_dataset
+                
+                print(f"🧬 Model loaded: {vocab_size} vocab, {block_size} block_size")
+                
+            except Exception as e:
+                print(f"⚠️ Failed to load model: {e}")
+                self.model = None
+                self.dataset = None
+        else:
+            print("🧬 No model found - will use fallback generation")
     
     def process_message(self, user_message: str, context: Dict = None) -> Dict[str, Any]:
         """Обрабатывает сообщение через все утилиты LE."""
@@ -92,8 +126,7 @@ class LEMolecule:
             print(f"❌ Molecule error: {e}")
             result['generated_response'] = "Signal lost. Reconnecting."
         
-        # Сохраняем в память
-        self.memory.record_message(user_message, result['generated_response'])
+        # НЕ сохраняем здесь - это делает inhale_exhale!
         
         processing_time = time.time() - start_time
         print(f"🧬 Complete: {processing_time:.2f}s, prefixes: {''.join(result['prefixes'])}")
