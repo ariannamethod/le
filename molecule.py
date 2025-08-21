@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple, Any
 
 # Импорты LE компонентов
-from memory import EnhancedMemory as Memory
+from memory import Memory
 from subjectivity import filter_message
 from objectivity import search_objectivity_sync
 from sixthsense import predict_chaos, modulate_by_chaos
