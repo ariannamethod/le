@@ -27,6 +27,7 @@ from telegram.ext import (
 
 from molecule import process_user_message
 from memory import Memory
+from inhale_exhale import inhale, exhale
 import metrics
 
 # Global memory instance
@@ -119,14 +120,12 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         reply = result.get('generated_response', 'Signal lost. Reconnecting.')
         
         # 🌊 INHALE - записываем диалог в память (как раньше!)
-        from inhale_exhale import inhale
         inhale(question, reply)
         
         # Отправляем ответ
         await update.message.reply_text(reply)
         
         # 🌬️ EXHALE - проверяем нужно ли обучение (как раньше!)
-        from inhale_exhale import exhale
         await exhale(update.effective_chat.id, context)
         
         # Логируем успех
