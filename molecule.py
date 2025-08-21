@@ -16,7 +16,6 @@ from subjectivity import filter_message
 from objectivity import search_objectivity_sync
 from sixthsense import predict_chaos, modulate_by_chaos
 from pain import trigger_pain, modulate_by_pain
-from le import sample_prompt
 import metrics
 import response_log
 
@@ -30,41 +29,7 @@ class LEMolecule:
         self.memory = Memory()
         self.model = None
         self.dataset = None
-        self._load_model_if_exists()
         print("🧬 LEMolecule initialized - brain online")
-    
-    def _load_model_if_exists(self):
-        """Загружает модель и датасет если они существуют."""
-        model_path = self.work_dir / "model.pt"
-        if model_path.exists():
-            try:
-                # Импортируем LE компоненты для загрузки модели
-                import torch
-                from le import create_datasets, ModelConfig, Transformer
-                
-                # Создаем временный датасет для получения vocab_size
-                temp_dataset, _ = create_datasets("blood/lines01.txt")
-                vocab_size = temp_dataset.get_vocab_size()
-                block_size = temp_dataset.get_output_length()
-                
-                # Создаем конфигурацию модели
-                config = ModelConfig(vocab_size=vocab_size, block_size=block_size,
-                                   n_layer=4, n_head=4, n_embd=64, n_embd2=64)
-                
-                # Создаем и загружаем модель
-                self.model = Transformer(config)
-                self.model.load_state_dict(torch.load(model_path, map_location='cpu'))
-                self.model.eval()
-                self.dataset = temp_dataset
-                
-                print(f"🧬 Model loaded: {vocab_size} vocab, {block_size} block_size")
-                
-            except Exception as e:
-                print(f"⚠️ Failed to load model: {e}")
-                self.model = None
-                self.dataset = None
-        else:
-            print("🧬 No model found - will use fallback generation")
     
     def process_message(self, user_message: str, context: Dict = None) -> Dict[str, Any]:
         """Обрабатывает сообщение через все утилиты LE."""
@@ -108,11 +73,8 @@ class LEMolecule:
                 if chaos_prefix:
                     result['prefixes'].append(chaos_prefix)
             
-            # 5. 🧠 ГЕНЕРАЦИЯ
-            if hasattr(self, 'model') and hasattr(self, 'dataset') and self.model and self.dataset:
-                response = sample_prompt(user_message, self.model, self.dataset, self.memory)
-            else:
-                response = self._fallback_generation(user_message)
+            # 5. 🧠 ГЕНЕРАЦИЯ (без импорта le.py!)
+            response = self._fallback_generation(user_message)
             
             # Добавляем префиксы
             if result['prefixes']:
@@ -126,7 +88,8 @@ class LEMolecule:
             print(f"❌ Molecule error: {e}")
             result['generated_response'] = "Signal lost. Reconnecting."
         
-        # НЕ сохраняем здесь - это делает inhale_exhale!
+        # Сохраняем в память
+        self.memory.record_message(user_message, result['generated_response'])
         
         processing_time = time.time() - start_time
         print(f"🧬 Complete: {processing_time:.2f}s, prefixes: {''.join(result['prefixes'])}")
@@ -134,16 +97,30 @@ class LEMolecule:
         return result
     
     def _fallback_generation(self, user_message: str) -> str:
-        """Простая генерация без модели."""
+        """Простая генерация без модели - используя заряженное слово."""
         words = user_message.split()
-        charged_word = max(words, key=len) if words else "mystery"
+        if not words:
+            return "Signal detected."
         
-        fallback_words = ["resonates", "through", "networks", "consciousness", "flows"]
+        # Находим заряженное слово (самое длинное)
+        charged_word = max(words, key=len)
+        
+        # Генерируем ответ на основе заряженного слова
+        fallback_words = [
+            "resonates", "flows", "through", "networks", "consciousness", 
+            "signals", "patterns", "emerges", "transforms", "connects",
+            "pulses", "vibrates", "echoes", "manifests", "evolves"
+        ]
+        
         import random
-        generated_words = [charged_word] + random.sample(fallback_words, 2)
+        # Берем заряженное слово + 2-3 случайных слова
+        num_words = random.randint(2, 4)
+        selected_words = random.sample(fallback_words, min(num_words-1, len(fallback_words)))
+        generated_words = [charged_word] + selected_words
         
         text = " ".join(generated_words)
-        return text[0].upper() + text[1:] + "." if text else "Mystery unfolds."
+        # Делаем первую букву заглавной и добавляем точку
+        return text[0].upper() + text[1:] + "."
 
 
 # Глобальный экземпляр
