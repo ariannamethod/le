@@ -19,6 +19,8 @@ from torch.utils.data.dataloader import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from memory import Memory
 from subjectivity import filter_message
+from objectivity import search_objectivity_sync
+from sixthsense import predict_chaos, modulate_by_chaos
 import metrics
 import response_log
 
@@ -512,6 +514,27 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
         print(f"⚠️ Objectivity search error: {e} - continuing without objectivity")
         context_words = []
         objectivity_prefix = ""
+    
+    # 🔮 ШЕСТОЕ ЧУВСТВО - предчувствие хаотических спайков
+    chaos_prefix = ""
+    try:
+        # Передаем влияние от objectivity в SixthSense
+        external_influence = context_result.get('influence_strength', 0.0) if 'context_result' in locals() else 0.0
+        chaos_predictions = predict_chaos(prompt, external_influence)
+        
+        # Если детектирован спайк хаоса, модулируем параметры
+        if chaos_predictions.get('spike_detected', False) or chaos_predictions.get('chaos_level', 0) > 0.3:
+            chaos_max_tokens, chaos_temperature, chaos_prefix = modulate_by_chaos(max_new_tokens, temperature)
+            max_new_tokens = chaos_max_tokens
+            temperature = chaos_temperature
+            print(f"🔮 Chaos spike detected! Level: {chaos_predictions['chaos_level']:.2f}, "
+                  f"Pulse: {chaos_predictions['conversation_pulse']:.2f}")
+            print(f"🌀 Chaos modulation: tokens={max_new_tokens}, temp={temperature:.2f}")
+        else:
+            print(f"🔮 SixthSense: chaos={chaos_predictions['chaos_level']:.2f}, no spike")
+    except Exception as e:
+        print(f"⚠️ SixthSense error: {e} - continuing without chaos prediction")
+        chaos_prefix = ""
 
     def _encode(text: str) -> torch.Tensor:
         return torch.tensor([dataset.stoi[ch] for ch in text if ch in dataset.stoi], dtype=torch.long)
@@ -675,6 +698,8 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
             prefixes.append(resonance_prefix)  # ⚡ для subjectivity
         if objectivity_prefix:
             prefixes.append(objectivity_prefix)  # 🌐 для objectivity
+        if chaos_prefix:
+            prefixes.append(chaos_prefix)  # 🔮🌀⚡ для sixthsense
         
         if prefixes:
             prefix_str = "".join(prefixes)
