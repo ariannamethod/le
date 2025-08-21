@@ -70,7 +70,7 @@ class ObjectivitySearch:
                     
                     return results[:3]
         except Exception as e:
-
+            pass
         return []
     
     async def _search_wikipedia_api(self, query: str) -> List[str]:
@@ -86,7 +86,7 @@ class ObjectivitySearch:
                         sentences = re.split(r'[.!?]+', data['extract'])
                         return [s.strip() for s in sentences[:3] if s.strip()]
         except Exception as e:
-
+            pass
         return []
     
     async def _search_simple_google(self, query: str) -> List[str]:
@@ -181,7 +181,7 @@ class ObjectivitySearch:
                 if results:
                     all_results.extend(results)
                     found_sources += 1
-                except Exception as e:
+            except Exception as e:
                 pass
         
         if not all_results:
@@ -228,7 +228,7 @@ class ObjectivitySearch:
             
 
         except Exception as e:
-
+            pass
 
 
 # Глобальный экземпляр для переиспользования
@@ -260,8 +260,8 @@ def search_objectivity_sync(user_query: str) -> Dict[str, any]:
         else:
             return asyncio.run(search_objectivity(user_query))
     except Exception as e:
-
-        return {
+        pass
+    return {
             'context_lines': [],
             'influence_strength': 0.0,
             'context_words': [],
