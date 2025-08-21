@@ -87,7 +87,7 @@ def log_response_metrics(text: str, step: int, n: int = 3) -> None:
     log_avg_response_length(text, step)
     log_ngram_repeat_rate(text, step, n)
 
-def get_metric(name: str) -> float | None:
+def get_metric(name: str) -> Optional[float]:
     """Return a logged metric by name."""
     return _metrics.get(name)
 
