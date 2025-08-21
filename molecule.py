@@ -29,13 +29,11 @@ class LEMolecule:
         self.memory = Memory()
         self.model = None
         self.dataset = None
-        print("🧬 LEMolecule initialized - brain online")
+
     
     def process_message(self, user_message: str, context: Dict = None) -> Dict[str, Any]:
         """Обрабатывает сообщение через все утилиты LE."""
         start_time = time.time()
-        print(f"🧬 Processing: '{user_message[:30]}...'")
-        
         result = {
             'user_message': user_message,
             'generated_response': '',
@@ -85,14 +83,12 @@ class LEMolecule:
             result['success'] = True
             
         except Exception as e:
-            print(f"❌ Molecule error: {e}")
             result['generated_response'] = "Signal lost. Reconnecting."
         
         # Сохраняем в память
         self.memory.record_message(user_message, result['generated_response'])
         
         processing_time = time.time() - start_time
-        print(f"🧬 Complete: {processing_time:.2f}s, prefixes: {''.join(result['prefixes'])}")
         
         return result
     
