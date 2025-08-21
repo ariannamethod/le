@@ -244,25 +244,4 @@ def modulate_by_chaos(base_max_tokens: int = 15, base_temperature: float = 0.8) 
     return sense.modulate_generation_params(base_max_tokens, base_temperature)
 
 
-# Для тестирования
-if __name__ == "__main__":
-    sense = SixthSense()
-    
-    test_messages = [
-        "hello world",
-        "what is the meaning of consciousness?",
-        "I LOVE THIS SO MUCH!!!",
-        "create something beautiful but chaotic",
-        "why do we exist? what if reality is not real?",
-    ]
-    
-    print("🔮 SixthSense Testing:")
-    for msg in test_messages:
-        predictions = sense.foresee(msg)
-        max_tokens, temp, prefix = sense.modulate_generation_params()
-        
-        print(f"\nMessage: '{msg}'")
-        print(f"Chaos: {predictions['chaos_level']:.2f}, Pulse: {predictions['conversation_pulse']:.2f}")
-        print(f"Modulation: {prefix} tokens={max_tokens}, temp={temp:.2f}")
-        if predictions['spike_detected']:
-            print("⚡ SPIKE DETECTED!")
+# Живая система без шаблонов - только чистое предчувствие хаоса
