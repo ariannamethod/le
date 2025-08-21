@@ -21,6 +21,7 @@ from memory import Memory
 from subjectivity import filter_message
 from objectivity import search_objectivity_sync
 from sixthsense import predict_chaos, modulate_by_chaos
+from pain import trigger_pain, modulate_by_pain
 import metrics
 import response_log
 
@@ -515,12 +516,37 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
         context_words = []
         objectivity_prefix = ""
     
-    # 🔮 ШЕСТОЕ ЧУВСТВО - предчувствие хаотических спайков
+    # 😰 БОЛЬ - нервная система и стресс-реакции
+    pain_prefix = ""
+    pain_level = 0.0
+    try:
+        pain_result = trigger_pain(prompt)
+        pain_level = pain_result.get('pain_level', 0.0)
+        
+        # Если есть боль, модулируем параметры
+        if pain_level > 0.2:
+            pain_max_tokens, pain_temperature, pain_prefix = modulate_by_pain(max_new_tokens, temperature)
+            max_new_tokens = pain_max_tokens
+            temperature = pain_temperature
+            print(f"😰 Pain detected! Level: {pain_level:.2f}, "
+                  f"Stress: {pain_result.get('total_stress', 0):.2f}")
+            print(f"💊 Pain modulation: tokens={max_new_tokens}, temp={temperature:.2f}")
+        else:
+            print(f"😰 Pain system: level={pain_level:.2f}, no significant pain")
+    except Exception as e:
+        print(f"⚠️ Pain system error: {e} - continuing without pain processing")
+        pain_prefix = ""
+    
+    # 🔮 ШЕСТОЕ ЧУВСТВО - предчувствие хаотических спайков (УСИЛЕННОЕ БОЛЬЮ!)
     chaos_prefix = ""
     try:
-        # Передаем влияние от objectivity в SixthSense
+        # Передаем влияние от objectivity И pain в SixthSense
         external_influence = context_result.get('influence_strength', 0.0) if 'context_result' in locals() else 0.0
-        chaos_predictions = predict_chaos(prompt, external_influence)
+        # БОЛЬ УСИЛИВАЕТ ШЕСТОЕ ЧУВСТВО!
+        pain_boost = pain_level * 0.5  # Боль добавляет до 50% к внешнему влиянию
+        total_influence = external_influence + pain_boost
+        
+        chaos_predictions = predict_chaos(prompt, total_influence)
         
         # Если детектирован спайк хаоса, модулируем параметры
         if chaos_predictions.get('spike_detected', False) or chaos_predictions.get('chaos_level', 0) > 0.3:
@@ -529,9 +555,11 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
             temperature = chaos_temperature
             print(f"🔮 Chaos spike detected! Level: {chaos_predictions['chaos_level']:.2f}, "
                   f"Pulse: {chaos_predictions['conversation_pulse']:.2f}")
-            print(f"🌀 Chaos modulation: tokens={max_new_tokens}, temp={temperature:.2f}")
+            print(f"🌀 Chaos modulation (pain-boosted): tokens={max_new_tokens}, temp={temperature:.2f}")
+            if pain_boost > 0.1:
+                print(f"💥 Pain amplification: +{pain_boost:.2f} to chaos influence!")
         else:
-            print(f"🔮 SixthSense: chaos={chaos_predictions['chaos_level']:.2f}, no spike")
+            print(f"🔮 SixthSense: chaos={chaos_predictions['chaos_level']:.2f}, pain_boost={pain_boost:.2f}")
     except Exception as e:
         print(f"⚠️ SixthSense error: {e} - continuing without chaos prediction")
         chaos_prefix = ""
@@ -698,8 +726,10 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
             prefixes.append(resonance_prefix)  # ⚡ для subjectivity
         if objectivity_prefix:
             prefixes.append(objectivity_prefix)  # 🌐 для objectivity
+        if pain_prefix:
+            prefixes.append(pain_prefix)  # 😰😟😕 для pain
         if chaos_prefix:
-            prefixes.append(chaos_prefix)  # 🔮🌀⚡ для sixthsense
+            prefixes.append(chaos_prefix)  # 🔮🌀⚡ для sixthsense (усиленное болью!)
         
         if prefixes:
             prefix_str = "".join(prefixes)
