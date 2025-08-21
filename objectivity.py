@@ -70,7 +70,7 @@ class ObjectivitySearch:
                     
                     return results[:3]
         except Exception as e:
-            print(f"🔍 DuckDuckGo search error: {e}")
+
         return []
     
     async def _search_wikipedia_api(self, query: str) -> List[str]:
@@ -86,7 +86,7 @@ class ObjectivitySearch:
                         sentences = re.split(r'[.!?]+', data['extract'])
                         return [s.strip() for s in sentences[:3] if s.strip()]
         except Exception as e:
-            print(f"🔍 Wikipedia search error: {e}")
+
         return []
     
     async def _search_simple_google(self, query: str) -> List[str]:
@@ -169,7 +169,7 @@ class ObjectivitySearch:
                 'found_sources': 0
             }
         
-        print(f"🌐 Objectivity search for: '{user_query}'")
+
         
         all_results = []
         found_sources = 0
@@ -181,12 +181,10 @@ class ObjectivitySearch:
                 if results:
                     all_results.extend(results)
                     found_sources += 1
-                    print(f"✅ Found {len(results)} results from {search_func.__name__}")
-            except Exception as e:
-                print(f"❌ Search error in {search_func.__name__}: {e}")
+                except Exception as e:
+                pass
         
         if not all_results:
-            print("🔍 No search results found")
             return {
                 'context_lines': [],
                 'influence_strength': 0.0,
@@ -228,9 +226,9 @@ class ObjectivitySearch:
                         f.write(f"{line.strip()}\n")
                 f.write("\n")  # Разделитель
             
-            print(f"💾 Logged {len(context_lines)} context lines for training")
+
         except Exception as e:
-            print(f"❌ Error logging context: {e}")
+
 
 
 # Глобальный экземпляр для переиспользования
@@ -262,7 +260,7 @@ def search_objectivity_sync(user_query: str) -> Dict[str, any]:
         else:
             return asyncio.run(search_objectivity(user_query))
     except Exception as e:
-        print(f"⚠️ Objectivity search failed: {e}")
+
         return {
             'context_lines': [],
             'influence_strength': 0.0,
@@ -287,7 +285,7 @@ if __name__ == "__main__":
                 print(f"Testing query: '{query}'")
                 result = await searcher.search_context(query)
                 
-                print(f"Found sources: {result['found_sources']}")
+        
                 print(f"Influence strength: {result['influence_strength']:.2f}")
                 print(f"Context words: {result['context_words']}")
                 print("Context lines:")
