@@ -629,6 +629,13 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
             if not text.endswith('.'):
                 text += '.'
         
+        # ДОПОЛНИТЕЛЬНАЯ ОБРАБОТКА: исправляем заглавные буквы после точек
+        import re
+        # Находим все случаи ". слово" и делаем первую букву заглавной
+        text = re.sub(r'(\.\s+)([a-z])', lambda m: m.group(1) + m.group(2).upper(), text)
+        # Также обрабатываем случаи ".слово" (без пробела)
+        text = re.sub(r'(\.)([a-z])', lambda m: m.group(1) + ' ' + m.group(2).upper(), text)
+        
         # Добавляем резонансный префикс (эмоджи молнии) в начало
         if resonance_prefix:
             text = f"{resonance_prefix} {text}"
