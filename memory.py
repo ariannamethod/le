@@ -3,7 +3,7 @@ import logging
 import os
 import sqlite3
 from pathlib import Path
-from typing import Optional, List, Union
+from typing import Optional
 
 
 class Memory:
@@ -68,7 +68,7 @@ class Memory:
         """Persist a conversation pair."""
         self.save_conversation(question, answer)
 
-    def get_messages(self, limit: Optional[int] = None) -> List[str]:
+    def get_messages(self, limit: int | None = None) -> list[str]:
         """Return recent conversation lines in chronological order."""
         cur = self.conn.cursor()
         query = "SELECT question, answer FROM conversations ORDER BY id DESC"
@@ -77,7 +77,7 @@ class Memory:
         else:
             cur.execute(query)
         rows = cur.fetchall()
-        lines: List[str] = []
+        lines: list[str] = []
         for question, answer in reversed(rows):
             if question:
                 lines.append(question)
@@ -86,7 +86,7 @@ class Memory:
         return lines
 
     def update_repo_hash(
-        self, repo_path: Union[str, Path] = ".", *, initial: bool = False
+        self, repo_path: str | Path = ".", *, initial: bool = False
     ) -> None:
         """Compute file hashes and flag training when source files change.
 
@@ -144,10 +144,6 @@ class Memory:
     def needs_training(self) -> bool:
         """Return True if retraining is required."""
         return self.get_meta("needs_training") == "1"
-
-    def get_accumulated_size(self) -> int:
-        """Return number of bytes accumulated toward the training limit."""
-        return int(self.get_meta("data_pending_bytes") or "0")
 
     @staticmethod
     def hash_file(path: str) -> str:
