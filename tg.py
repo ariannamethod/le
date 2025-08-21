@@ -56,7 +56,7 @@ def warmup_model() -> None:
     try:
         subprocess.run(
             [
-                "python",
+                "python3",
                 "le.py",
                 "--type",
                 "transformer",
@@ -183,7 +183,7 @@ async def run_training(
     try:
         memory.set_meta("needs_training", "0")
         proc = await asyncio.create_subprocess_exec(
-            "python",
+            "python3",
             "le.py",
             "--type",
             "transformer",
