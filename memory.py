@@ -21,7 +21,7 @@ from collections import defaultdict, deque
 class EnhancedMemory:
     """Прокачанная SQLite-память с эмоциями, связями и временными паттернами."""
 
-    def __init__(self, path: str = "enhanced_memory.db") -> None:
+    def __init__(self, path: str = "memory.db") -> None:
         self.conn = sqlite3.connect(path)
         self.conn.row_factory = sqlite3.Row  # Для удобного доступа к полям
         self._init_enhanced_db()
