@@ -113,8 +113,10 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             'message_id': update.message.message_id
         }
         
-        # Обрабатываем через molecule
-        result = process_user_message(question, molecule_context)
+        # Обрабатываем через molecule в отдельном потоке
+        import asyncio
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, process_user_message, question, molecule_context)
         
         # Получаем ответ
         reply = result.get('generated_response', 'Signal lost. Reconnecting.')
@@ -123,7 +125,12 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         inhale(question, reply)
         
         # Отправляем ответ
-        await update.message.reply_text(reply)
+        try:
+            await update.message.reply_text(reply)
+            logging.info(f"✅ Message sent to user {user_id}")
+        except Exception as telegram_error:
+            logging.error(f"❌ Failed to send Telegram message: {telegram_error}")
+            raise
         
         # 🌬️ EXHALE - проверяем нужно ли обучение (как раньше!)
         await exhale(update.effective_chat.id, context)
