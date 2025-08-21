@@ -317,14 +317,26 @@ def main() -> None:
         return
         
     logging.info(f"🤖 Starting LE bot with token: {TOKEN[:10]}...")
+    
+    logging.info("📦 Creating Telegram application...")
     app = ApplicationBuilder().token(TOKEN).build()
+    
+    logging.info("🔧 Adding handlers...")
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("train", train))
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, respond)
     )
+    
+    logging.info("🧠 Creating global memory...")
+    logging.info(f"💾 Memory path: {memory.conn.execute('PRAGMA database_list').fetchone()[2]}")
+    
     try:
+        logging.info("🔥 Starting warmup...")
         warmup_model()
+        logging.info("✅ Warmup completed")
+        
+        logging.info("🚀 Starting polling...")
         app.run_polling()
     finally:
         memory.close()
