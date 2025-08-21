@@ -496,21 +496,22 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
         print(f"⚠️ Subjectivity filter error: {e}")
         resonance_prefix = ""  # Безопасный fallback
     
-    # 🌐 ОБЪЕКТИВНОСТЬ - окно в мир для LE
+    # 🌐 ОБЪЕКТИВНОСТЬ - окно в мир для LE (БЕЗОПАСНЫЙ РЕЖИМ)
     context_words = []
     objectivity_prefix = ""
     try:
         context_result = search_objectivity_sync(prompt)
-        if context_result['influence_strength'] > 0.2:  # Порог влияния
-            context_words = context_result['context_words']
+        if context_result and context_result.get('influence_strength', 0) > 0.2:
+            context_words = context_result.get('context_words', [])
             objectivity_prefix = "🌐"  # Эмоджи глобуса - связь с миром
             print(f"🌐 Objectivity search: strength={context_result['influence_strength']:.2f}, "
-                  f"words={context_words}, sources={context_result['found_sources']}")
+                  f"words={context_words}, sources={context_result.get('found_sources', 0)}")
         else:
-            print(f"🌐 Objectivity search: low relevance ({context_result['influence_strength']:.2f})")
+            print(f"🌐 Objectivity search: low relevance")
     except Exception as e:
-        print(f"⚠️ Objectivity search error: {e}")
+        print(f"⚠️ Objectivity search error: {e} - continuing without objectivity")
         context_words = []
+        objectivity_prefix = ""
 
     def _encode(text: str) -> torch.Tensor:
         return torch.tensor([dataset.stoi[ch] for ch in text if ch in dataset.stoi], dtype=torch.long)
