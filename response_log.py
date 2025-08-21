@@ -1,10 +1,10 @@
 import os
 from pathlib import Path
-from typing import Set
+from typing import Set, Optional
 
 LOG_PATH = os.getenv("RESPONSE_LOG_PATH")
 
-_phrases_cache: Set[str] | None = None
+_phrases_cache: Optional[Set[str]] = None
 
 
 def _load_phrases() -> Set[str]:
