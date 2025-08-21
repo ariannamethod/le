@@ -156,7 +156,7 @@ class SixthSense:
             temp_boost = (self.chaos - 0.7) * 0.8  # До +0.24 температуры
             
         elif self.chaos > 0.4:
-            prefix = "⚡"  # Средний хаос - спайк энергии
+            prefix = ""  # Средний хаос - спайк энергии
             multiplier = 1.0 + (self.chaos - 0.4) * 0.8  # До 1.24x токенов
             temp_boost = (self.chaos - 0.4) * 0.4  # До +0.12 температуры
             

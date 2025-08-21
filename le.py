@@ -702,13 +702,13 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
         # Добавляем префиксы утилит в начало
         prefixes = []
         if resonance_prefix:
-            prefixes.append(resonance_prefix)  # ⚡ для subjectivity
+            prefixes.append(resonance_prefix)  # для subjectivity
         if objectivity_prefix:
             prefixes.append(objectivity_prefix)  # 🌐 для objectivity
         if pain_prefix:
             prefixes.append(pain_prefix)  # 😰😟😕 для pain
         if chaos_prefix:
-            prefixes.append(chaos_prefix)  # 🔮🌀⚡ для sixthsense (усиленное болью!)
+            prefixes.append(chaos_prefix)  # 🔮🌀 для sixthsense (усиленное болью!)
         
         if prefixes:
             prefix_str = "".join(prefixes)
