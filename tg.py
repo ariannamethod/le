@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 from asyncio import Lock
 from pathlib import Path
+from typing import Optional
 
 import torch
 
@@ -38,13 +39,13 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 WORK_DIR = Path(os.getenv("LE_WORK_DIR", "names")).resolve()
 WORK_DIR.mkdir(parents=True, exist_ok=True)
 SAMPLE_TIMEOUT = int(os.getenv("LE_SAMPLE_TIMEOUT", "40"))
-TRAINING_TASK: asyncio.Task | None = None
+TRAINING_TASK: Optional[asyncio.Task] = None
 TRAINING_LIMIT_BYTES = int(os.getenv("LE_TRAINING_LIMIT_BYTES", str(5 * 1024)))
 TOP_K = int(os.getenv("LE_TOP_K", "40"))
 TEMPERATURE = float(os.getenv("LE_TEMPERATURE", "0.8"))
 
 training_lock = Lock()
-active_users: set[int] = set()
+active_users = set()
 
 
 def warmup_model() -> None:
@@ -165,9 +166,9 @@ async def check_background_training() -> None:
 
 
 async def run_training(
-    chat_id: int | None,
-    context: ContextTypes.DEFAULT_TYPE | None,
-    extra_dataset: Path | None = None,
+    chat_id: Optional[int],
+    context: Optional[ContextTypes.DEFAULT_TYPE],
+    extra_dataset: Optional[Path] = None,
 ) -> None:
     dataset_path = build_dataset()
     if extra_dataset:
@@ -245,12 +246,12 @@ async def train(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         TRAINING_TASK = asyncio.create_task(run_training(chat_id, context))
 
 
-def build_dataset(latest_line: str | None = None) -> Path:
+def build_dataset(latest_line: Optional[str] = None) -> Path:
     with tempfile.NamedTemporaryFile(
         mode="w", delete=False, suffix=".txt", encoding="utf-8"
     ) as tmp:
         total = 0
-        seen: set[str] = set()
+        seen = set()
 
         def write_line(line: str) -> None:
             nonlocal total
