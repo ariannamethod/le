@@ -504,15 +504,18 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
     objectivity_prefix = ""
     try:
         context_result = search_objectivity_sync(prompt)
-        if context_result and context_result.get('influence_strength', 0) > 0.2:
+        if context_result and context_result.get('influence_strength', 0) > 0.1:  # Понизил порог!
             context_words = context_result.get('context_words', [])
             objectivity_prefix = "🌐"  # Эмоджи глобуса - связь с миром
             print(f"🌐 Objectivity search: strength={context_result['influence_strength']:.2f}, "
                   f"words={context_words}, sources={context_result.get('found_sources', 0)}")
         else:
-            print(f"🌐 Objectivity search: low relevance")
+            relevance = context_result.get('influence_strength', 0) if context_result else 0
+            sources = context_result.get('found_sources', 0) if context_result else 0
+            print(f"🌐 Objectivity search: low relevance (strength={relevance:.2f}, sources={sources})")
     except Exception as e:
         print(f"⚠️ Objectivity search error: {e} - continuing without objectivity")
+        print(f"🔍 Error details: {type(e).__name__}")
         context_words = []
         objectivity_prefix = ""
     
