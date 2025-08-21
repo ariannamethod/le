@@ -8,12 +8,8 @@ import subprocess
 import tempfile
 from asyncio import Lock
 from pathlib import Path
+import asyncio
 from typing import Optional
-
-import torch
-
-torch.set_num_threads(4)
-os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 from dotenv import load_dotenv
 from telegram import Update
@@ -26,30 +22,31 @@ from telegram.ext import (
 )
 
 from molecule import process_user_message
-from memory import Memory
-from inhale_exhale import inhale, exhale
-import metrics
-
-# Global memory instance
-memory = Memory()
+from inhale_exhale import inhale, exhale, memory
 
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 
+# Resolve and ensure the working directory exists and is writable
 WORK_DIR = Path(os.getenv("LE_WORK_DIR", "names")).resolve()
 WORK_DIR.mkdir(parents=True, exist_ok=True)
-SAMPLE_TIMEOUT = int(os.getenv("LE_SAMPLE_TIMEOUT", "40"))
+if not os.access(WORK_DIR, os.W_OK):
+    raise PermissionError(f"Cannot write to {WORK_DIR}")
+SAMPLE_TIMEOUT = int(os.getenv("LE_SAMPLE_TIMEOUT", "120"))
 TRAINING_TASK: Optional[asyncio.Task] = None
-TRAINING_LIMIT_BYTES = int(os.getenv("LE_TRAINING_LIMIT_BYTES", str(5 * 1024)))
-TOP_K = int(os.getenv("LE_TOP_K", "40"))
-TEMPERATURE = float(os.getenv("LE_TEMPERATURE", "0.8"))
+TRAINING_LIMIT_BYTES = int(
+    os.getenv("LE_TRAINING_LIMIT_BYTES", str(5 * 1024))
+)
+TOP_K = int(os.getenv("LE_TOP_K", "50"))
+TEMPERATURE = float(os.getenv("LE_TEMPERATURE", "1.0"))
 
 training_lock = Lock()
 active_users = set()
 
 
 def warmup_model() -> None:
+    """Run a sample to load the model and warm up caches."""
     model_path = WORK_DIR / "model.pt"
     if not model_path.exists():
         return
@@ -95,74 +92,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     global TRAINING_TASK
-
-    user = getattr(update, "effective_user", None)
-    user_id = getattr(user, "id", None)
     question = update.message.text
-
-    if user_id is not None:
-        if user_id in active_users:
-            return
-        active_users.add(user_id)
     
-    try:
-        # 🧬 ИСПОЛЬЗУЕМ MOLECULE - ЦЕНТРАЛЬНЫЙ МОЗГ LE!
-        molecule_context = {
-            'chat_id': update.effective_chat.id,
-            'user_id': user_id,
-            'message_id': update.message.message_id
-        }
-
-        # Обрабатываем через molecule с таймаутом
-        try:
-            result = await asyncio.wait_for(
-                asyncio.to_thread(process_user_message, question, molecule_context),
-                timeout=SAMPLE_TIMEOUT,
-            )
-        except asyncio.TimeoutError:
-            logging.warning(f"⏰ Timeout processing message for user {user_id}")
-            if user_id is not None:
-                active_users.discard(user_id)
-            return
-        
-        # Получаем ответ
-        reply = result.get('generated_response', 'Signal lost. Reconnecting.')
-        
-        # 🌊 INHALE - записываем диалог в память (как раньше!)
-        inhale(question, reply)
-        
-        # Отправляем ответ
-        try:
-            await update.message.reply_text(reply)
-            logging.info(f"✅ Message sent to user {user_id}")
-        except Exception as telegram_error:
-            logging.error(f"❌ Failed to send Telegram message: {telegram_error}")
-            raise
-        
-        # 🌬️ EXHALE - проверяем нужно ли обучение (как раньше!)
-        await exhale(update.effective_chat.id, context)
-        
-        # Логируем успех
-        if result.get('success', False):
-            logging.info(f"🧬 Molecule response: prefixes={result.get('prefixes', [])}, "
-                        f"time={result.get('processing_time', 0):.2f}s")
-        else:
-            logging.warning(f"⚠️ Molecule fallback used: {result.get('error', 'unknown error')}")
-        
-        # Запускаем обучение если нужно (фоново)
-        model_path = WORK_DIR / "model.pt"
-        if not model_path.exists():
-            async with training_lock:
-                if TRAINING_TASK is None or TRAINING_TASK.done():
-                    TRAINING_TASK = asyncio.create_task(run_training(None, None))
-        
-    except Exception as e:
-        logging.exception(f"❌ Critical error in respond: {e}")
-        await update.message.reply_text("System error. Rebooting neural pathways.")
-        
-    finally:
-        if user_id is not None:
-            active_users.discard(user_id)
+    # Запускаем обучение в фоне если модели нет
+    model_path = WORK_DIR / "model.pt"
+    if not model_path.exists():
+        if TRAINING_TASK is None or TRAINING_TASK.done():
+            TRAINING_TASK = asyncio.create_task(run_training(None, None))
+    
+    # Используем MOLECULE - центральный мозг LE с утилитами
+    molecule_context = {
+        'chat_id': update.effective_chat.id,
+        'user_id': getattr(update.effective_user, 'id', None),
+        'message_id': update.message.message_id
+    }
+    
+    # Обрабатываем через все утилиты LE
+    result = process_user_message(question, molecule_context)
+    reply = result.get('generated_response', 'Signal lost. Reconnecting.')
+    
+    await update.message.reply_text(reply)
+    inhale(question, reply)
+    await exhale(update.effective_chat.id, context)
 
 
 async def check_background_training() -> None:
