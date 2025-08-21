@@ -512,17 +512,48 @@ class EnhancedMemory:
         return int(self.get_meta("data_pending_bytes") or "0")
 
     def update_repo_hash(self, repo_path: str | Path = ".", *, initial: bool = False) -> None:
-        """Совместимость - упрощенная версия."""
-        # Базовая логика отслеживания изменений файлов
+        """Compute file hashes and flag training when source files change."""
         repo = Path(repo_path)
-        for file in repo.rglob("*.py"):
-            if file.is_file():
-                digest = self.hash_file(str(file))
-                key = f"hash:{file.relative_to(repo)}"
-                if self.get_meta(key) != digest:
-                    if not initial:
-                        logging.info("Hash for %s changed", file)
-                    self.set_meta(key, digest)
+        code_changed = False
+        data_changed_bytes = 0
+
+        db_path = Path(self.conn.execute("PRAGMA database_list").fetchone()[2])
+        ignored_dirs = {".git", "logs", "__pycache__", ".pytest_cache"}
+        ignored_names = {db_path.name, "memory.db", "enhanced_memory.db"}
+        data_dirs = {repo / "blood", repo / "datasets"}
+
+        for file in repo.rglob("*"):
+            if not file.is_file():
+                continue
+            if any(part in ignored_dirs for part in file.parts):
+                continue
+            if file.name in ignored_names:
+                continue
+
+            digest = self.hash_file(str(file))
+            key = f"hash:{file.relative_to(repo)}"
+            if self.get_meta(key) != digest:
+                if not initial:
+                    logging.info("Hash for %s changed", file)
+                    if any(d in file.parents for d in data_dirs):
+                        data_changed_bytes += file.stat().st_size
+                    else:
+                        code_changed = True
+                self.set_meta(key, digest)
+
+        if code_changed:
+            self.set_meta("needs_training", "1")
+
+        if data_changed_bytes:
+            total = int(self.get_meta("data_pending_bytes") or "0")
+            total += data_changed_bytes
+            training_limit = int(
+                os.getenv("LE_TRAINING_LIMIT_BYTES", str(5 * 1024))
+            )
+            if total >= training_limit:
+                self.set_meta("needs_training", "1")
+                total = 0
+            self.set_meta("data_pending_bytes", str(total))
 
     @staticmethod
     def hash_file(path: str) -> str:
@@ -532,5 +563,8 @@ class EnhancedMemory:
                 hasher.update(chunk)
         return hasher.hexdigest()
 
+
+# АЛИАС ДЛЯ ОБРАТНОЙ СОВМЕСТИМОСТИ!
+Memory = EnhancedMemory
 
 # Живая эволюционирующая память без ограничений
