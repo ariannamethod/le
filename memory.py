@@ -472,7 +472,7 @@ class EnhancedMemory:
         """Обратная совместимость."""
         self.save_enhanced_conversation(question, answer)
 
-    def get_messages(self, limit: int | None = None) -> List[str]:
+    def get_messages(self, limit: Optional[int] = None) -> List[str]:
         """Обратная совместимость."""
         cur = self.conn.cursor()
         query = "SELECT question, answer FROM enhanced_conversations ORDER BY timestamp DESC"
@@ -511,7 +511,7 @@ class EnhancedMemory:
         """Return number of bytes accumulated toward the training limit."""
         return int(self.get_meta("data_pending_bytes") or "0")
 
-    def update_repo_hash(self, repo_path: str | Path = ".", *, initial: bool = False) -> None:
+    def update_repo_hash(self, repo_path = ".", *, initial: bool = False) -> None:
         """Compute file hashes and flag training when source files change."""
         repo = Path(repo_path)
         code_changed = False
