@@ -469,7 +469,7 @@ def generate(model, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k
 
     return idx
 
-def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens: int = 10, temperature: float = 0.8, top_k: int | None = 40, top_p: float | None = 0.9) -> str:
+def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens: int = 15, temperature: float = 0.8, top_k: int | None = 40, top_p: float | None = 0.9) -> str:
     """Generate text conditioned on a prompt and conversation history.
 
     The ``prompt`` is tokenized, the token with the highest information gain
@@ -586,12 +586,35 @@ def sample_prompt(prompt: str, model, dataset, memory: Memory, *, max_new_tokens
         text = " ".join(generated_words)
         print(f"DEBUG: итоговое предложение: '{text}'")
         
-        # 5. Форматируем
+        # 5. Форматируем с пунктуационной логикой для двух предложений
         text = text.strip()
-        if text:
-            text = text[0].upper() + text[1:]
-        if not text.endswith('.'):
-            text += '.'
+        
+        # Разбиваем на слова для создания двух предложений
+        words = text.split()
+        if len(words) >= 4:
+            # Делим пополам для двух предложений
+            mid = len(words) // 2
+            first_sentence = " ".join(words[:mid])
+            second_sentence = " ".join(words[mid:])
+            
+            # Форматируем каждое предложение
+            if first_sentence:
+                first_sentence = first_sentence[0].upper() + first_sentence[1:] if len(first_sentence) > 1 else first_sentence.upper()
+                if not first_sentence.endswith('.'):
+                    first_sentence += '.'
+            
+            if second_sentence:
+                second_sentence = second_sentence[0].upper() + second_sentence[1:] if len(second_sentence) > 1 else second_sentence.upper()
+                if not second_sentence.endswith('.'):
+                    second_sentence += '.'
+            
+            text = f"{first_sentence} {second_sentence}"
+        else:
+            # Если слов мало, оставляем как одно предложение
+            if text:
+                text = text[0].upper() + text[1:] if len(text) > 1 else text.upper()
+            if not text.endswith('.'):
+                text += '.'
         
         return text
 
