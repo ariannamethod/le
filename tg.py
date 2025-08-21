@@ -311,6 +311,12 @@ def build_dataset(latest_line: Optional[str] = None) -> Path:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
+    
+    if not TOKEN:
+        logging.error("❌ TELEGRAM_TOKEN not found! Check environment variables.")
+        return
+        
+    logging.info(f"🤖 Starting LE bot with token: {TOKEN[:10]}...")
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("train", train))
