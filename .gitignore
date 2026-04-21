@@ -1,0 +1,4 @@
+/le
+/tests/test_le
+*.o
+*.dSYM

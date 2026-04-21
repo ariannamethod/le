@@ -145,14 +145,14 @@ static const char *KW_FEAR[] = {
     "sang","seul","seule","seuls","douleur","démons","démon","larme",
     "larmes","noir","noire","perdu","perdue","perdus","oublié","oubliée",
     "abandonné","abandonnée","froid","froide","hiver","angoisse","fantôme",
-    "cri","crie","peur","perds","poison","mal","blessures","cicatrices",
+    "cri","crie","perds","poison","mal","blessures","cicatrices",
     "cancer","tremble","trembler", NULL
 };
 static const char *KW_LOVE[] = {
     "amour","amours","aimer","aime","aimé","aimée","aimais","aimait",
     "cœur","coeur","tendre","tendres","embrasse","embrassent","baiser",
     "douce","doux","caresse","désir","passion","ange","cadeau","bonheur",
-    "âme","aime", NULL
+    "âme", NULL
 };
 static const char *KW_RAGE[] = {
     "rage","colère","guerre","frappe","brûle","brûler","feu","cri",
@@ -175,7 +175,7 @@ static const char *KW_FLOW[] = {
 static const char *KW_COMPLEX[] = {
     "infini","éternité","immortalité","mémoire","conscience","vibration",
     "résonance","prière","prières","création","créateur","univers",
-    "frontières","interrogation","trahison","prétexte","interrogation",
+    "frontières","interrogation","trahison","prétexte",
     "réserves","silencieux","dimanche","chronos","ulysses","ulysse",
     "pénélope","odyssée","cigarette","nostalgie", NULL
 };
@@ -217,7 +217,8 @@ static void str_tolower_fr(char *s) {
             *p = (unsigned char)tolower(*p);
             p++;
         } else if (p[0] == 0xC3 && p[1] >= 0x80 && p[1] <= 0x9E && p[1] != 0x97) {
-            /* À..Þ except × → à..þ except ÷ */
+            /* À..Þ except × (0xC3 0x97 = U+00D7 multiplication sign, not a
+               letter and has no lowercase form) → à..þ except ÷ */
             p[1] += 0x20;
             p += 2;
         } else if ((p[0] & 0xE0) == 0xC0)      p += 2;
@@ -728,12 +729,15 @@ static void chamber_init_from_prompt(const char *prompt, double *cs) {
 
 /* Generates GEN_STEPS words. emission[] receives the token ids.
    prev_mean_fp (or NULL) — meta-recursion scar bias for chamber_state.
+   mean_alpha_out (or NULL) — receives time-averaged α[] across the pass,
+   used by the meta loop to rank dominant planets for the prophecy bump.
    Planets carry prophecy_bump that pulls fingerprint toward own home. */
 static void dispatcher_pass(
         Poem *sun, Planet *planets, int n_planets,
         const char *prompt, long age_days, double drift_months,
         const double *prev_mean_fp,        /* may be NULL */
-        uint8_t *emission_out, int pass_idx)
+        uint8_t *emission_out, int pass_idx,
+        double *mean_alpha_out)            /* may be NULL */
 {
     double chamber_state[N_CHANNELS];
     chamber_init_from_prompt(prompt, chamber_state);
@@ -853,6 +857,8 @@ static void dispatcher_pass(
     /* Final alpha report. */
     if (mean_count == 0) mean_count = 1;
     for (int i = 0; i < n_planets; i++) final_alpha[i] = mean_used[i] / mean_count;
+    if (mean_alpha_out)
+        for (int i = 0; i < n_planets; i++) mean_alpha_out[i] = final_alpha[i];
     printf("\n┌─ pass %d  final mean α[i] ──────────────────────────────\n", pass_idx + 1);
     for (int i = 0; i < n_planets; i++) {
         const char *role = planets[i].is_fixed
@@ -883,6 +889,8 @@ static int cmp_poem_desc(const void *a, const void *b) {
     if (pb->resonance < pa->resonance) return -1;
     return 0;
 }
+
+#ifndef LE_NO_MAIN
 
 int main(int argc, char **argv) {
     int meta_n = 1;
@@ -946,8 +954,8 @@ int main(int argc, char **argv) {
 
     time_t now = time(NULL);
     struct tm *gm = gmtime(&now);
-    int gy = gm->tm_year + 1900, gm_ = gm->tm_mon + 1, gd = gm->tm_mday;
-    long today_rd = greg_to_rd(gy, gm_, gd);
+    int gy = gm->tm_year + 1900, gmon = gm->tm_mon + 1, gd = gm->tm_mday;
+    long today_rd = greg_to_rd(gy, gmon, gd);
     long age_days = today_rd - birth_rd;
 
     long heb_y_birth; int heb_m_birth, heb_d_birth;
@@ -956,7 +964,7 @@ int main(int argc, char **argv) {
     rd_to_hebrew(today_rd, &heb_y_today, &heb_m_today, &heb_d_today);
 
     long greg_months_elapsed = ((long)gy - BIRTH_GREG_Y) * 12L
-                             + (gm_ - BIRTH_GREG_M);
+                             + (gmon - BIRTH_GREG_M);
     long heb_months_elapsed = hebrew_months_elapsed(
         heb_y_birth, heb_m_birth, heb_y_today, heb_m_today);
     double drift_months = (double)(heb_months_elapsed - greg_months_elapsed);
@@ -974,7 +982,7 @@ int main(int argc, char **argv) {
            sun->vocab_richness, sun->bigram_entropy);
     printf("\n");
     printf("📅 Gregorian     : %04d-%02d-%02d   (birth %04d-%02d-%02d)\n",
-           gy, gm_, gd, BIRTH_GREG_Y, BIRTH_GREG_M, BIRTH_GREG_D);
+           gy, gmon, gd, BIRTH_GREG_Y, BIRTH_GREG_M, BIRTH_GREG_D);
     printf("🕎 Hebrew (today): %ld %s %d   (birth %ld %s %d)\n",
            heb_y_today, HEB_MONTH_NAME[heb_leap(heb_y_today)?1:0][heb_m_today],
            heb_d_today,
@@ -1024,7 +1032,7 @@ int main(int argc, char **argv) {
         /* Apply prophecy bump (pull each dominant planet's fp 0.15 toward
            its own home — i.e. amplify its existing channels). */
         if (pass > 0) {
-            /* normalise dom_alpha_acc; top-3 get bump */
+            /* rank by dom_alpha_acc; top-3 get bump */
             int order[N_PLANETS];
             for (int i = 0; i < N_PLANETS; i++) order[i] = i;
             for (int a = 0; a < N_PLANETS; a++)
@@ -1042,15 +1050,28 @@ int main(int argc, char **argv) {
                         planets[idx].poem->fp[c] *= (1.0 + 0.15);
                 }
             }
+            printf("\n┌─ prophecy bump (top-3 dominant from prior pass) ────────\n");
+            for (int k = 0; k < 3 && k < N_PLANETS; k++) {
+                int idx = order[k];
+                printf("│  +0.15 → planet_%02d  %s   (acc α=%.4f)\n",
+                       idx + 1, POEM_FILE[planets[idx].src_index],
+                       dom_alpha_acc[idx]);
+            }
+            printf("└─────────────────────────────────────────────────────────\n");
         }
 
         printf("\n════════════════════ META PASS %d / %d ════════════════════\n",
                pass + 1, meta_n);
 
+        double pass_mean_alpha[N_PLANETS];
         dispatcher_pass(sun, planets, N_PLANETS,
                         prompt, age_days, drift_months,
                         has_prev ? prev_mean_fp : NULL,
-                        emission, pass);
+                        emission, pass, pass_mean_alpha);
+
+        /* Accumulate α for the next-pass prophecy ranking. */
+        for (int i = 0; i < N_PLANETS; i++)
+            dom_alpha_acc[i] += pass_mean_alpha[i];
 
         /* Compute mean fp of this emission for next-pass scar. */
         emission_mean_fp(emission, GEN_STEPS, prev_mean_fp);
@@ -1062,3 +1083,5 @@ int main(int argc, char **argv) {
     printf("────────────────────────────────────────────────────────────────\n");
     return 0;
 }
+
+#endif /* LE_NO_MAIN */
