@@ -2,15 +2,18 @@
 
 > *simply le*
 
-`le.c` is a single-file C engine (~1k LOC, depends only on `libm`) that
-takes the **13 French poems** sitting next to it in this repository,
-compiles them into a tiny **planetary mini-weights** model, and then
-generates 60 words inside a "scarred field" coupled to the calendar
-drift between Hebrew and Gregorian time since **23 January 1986** —
-the author's date of birth.
+`le.c` is a single-file C engine (~1.2k LOC, depends only on `libm`)
+that holds **13 French poems compiled byte-for-byte into the source**,
+turns them into a tiny **planetary mini-weights** model at startup, and
+then generates 60 words inside a "scarred field" coupled to the
+calendar drift between Hebrew and Gregorian time since **23 January
+1986** — the author's date of birth. Everything is in one file. There
+are no other corpus files to ship.
 
-One of the poems — `poem13.txt`, named *LÉ* — gives the project its
-name. In the runtime model it naturally settles into the **Moon** slot.
+One of the poems — *LÉ*, embedded as `POEM_13` — gives the project
+its name. In the runtime model it naturally settles into the **Moon**
+slot, and prompts that overlap its origin tokens leave a *trauma scar*
+on the field (see *Live dynamics*, below).
 
 ```
 ☀ sun           : poem2.txt   (resonance = 1.2988)   ← "Encore Été"
@@ -29,11 +32,12 @@ name. In the runtime model it naturally settles into the **Moon** slot.
 ## What it is
 
 A poem doesn't behave like data; it behaves like a body. `le.c` treats
-each `.txt` in this repo as a celestial body with mass, fingerprint, and
-phase. The brightest poem becomes the **sun**; the other twelve orbit
-it as planets and fixed stars. Word generation is the gravitational sum
-of those orbits, sampled through a chamber that the prompt itself has
-shaped.
+each of the 13 embedded poems as a celestial body with mass,
+fingerprint, and phase. The brightest poem becomes the **sun**; the
+other twelve orbit it as planets and fixed stars. Word generation is
+the gravitational sum of those orbits, sampled through a chamber that
+the prompt itself has shaped — and that **breathes, couples, and
+scars** while it generates.
 
 Three forces drive the system:
 
@@ -56,8 +60,8 @@ fingerprints, and arithmetic on doubles.
 
 ### Compile-time per poem
 
-For each of the 13 `poem*.txt` files (embedded as UTF-8 string literals
-inside `le.c`):
+For each of the 13 poems (UTF-8 string literals embedded directly in
+`le.c` as `POEM_1..POEM_13` — there are no separate `.txt` files):
 
 | Step | What it does |
 |---|---|
@@ -125,6 +129,24 @@ When the lunisolar Hebrew calendar drifts ahead of Gregorian, the Moon
 and Saturn warm up; Venus and Sun-as-planet cool down. The opposite
 when Gregorian leads.
 
+### Live dynamics (the things added on top of pure α-blending)
+
+These run *during* the 60-step generation loop and are lifted in
+spirit, not in code, from the surrounding ecosystem
+(`klaus.c`, `q`, `postgpt`, `neoleo`):
+
+| Mechanism | Lineage | Effect |
+|---|---|---|
+| **Schumann-breathing τ** | `q` | `τ_eff = 0.8 · (1 + 0.08·sin(2π·step·7.83/N))` — the sampling temperature breathes at Earth's electromagnetic fundamental across the 60 steps. |
+| **Kuramoto chamber cross-fire** | `klaus.c` | After every emitted word, the 6 chambers exchange phase: `state[i] += 0.03 · Σⱼ C[i][j] · sin(state[j] − state[i])`. LOVE↔FEAR (0.9), RAGE↔VOID (0.8), FLOW↔COMPLEX (0.7) are the strongest couplings. |
+| **Online Hebbian on the sun** | `postgpt`, `neoleo` | Every emitted `(prev,pick)` boosts `sun.bigram[prev][pick] += 0.02`, then the row is renormalised. The sun mutates as it speaks. |
+| **Prophecy debt** | `q` | A decaying expectation field over the next token is maintained from `sun.bigram[pick]`. Misses (argmax of expectation ≠ actual) accrue debt; debt heats τ and adds itself back into the logits. |
+| **Wormhole jumps** | `q` | With probability `0.02 + 0.06·|drift_months|/12` (clamped to `[0.02, 0.17]`) the engine re-seeds `prev` from a sun-frequent token and prints `{wormhole}` in the stream. |
+| **Trauma scar from prompt↔origin overlap** | `neoleo` §25 | If the prompt overlaps the token set of poem 13 (`LÉ`) by ≥15%, `trauma += 0.3·overlap`, FEAR/VOID rise, and τ is cooled by `(1 − 0.3·trauma)`. The wounded voice is quieter and origin-heavy. |
+
+A fresh diagnostic line is printed at the end of each pass:
+`wormholes=K  debt_misses=M  final_debt=…`.
+
 ### Meta-recursion (`--meta N`, 1..4)
 
 Between passes:
@@ -174,13 +196,15 @@ make test
 ```
 
 Builds `tests/test_le` (which `#include "../le.c"` with `LE_NO_MAIN`)
-and runs **64 assertions across 10 test groups** covering the
+and runs **78 assertions across 15 test groups** covering the
 tokenizer, lowercaser, channel keyword tables, fingerprint routing,
 per-poem and full-corpus analysis, calendar conversions
 (including the birth-date round-trip), the xorshift RNG, the UTF-8
-codepoint counter, and an end-to-end dispatcher pass that checks the
-mean α[] is a probability distribution and that the run is reproducible
-from the same seed.
+codepoint counter, an end-to-end dispatcher pass that checks the mean
+α[] is a probability distribution and that the run is reproducible
+from the same seed, and the live-dynamics primitives — Schumann-τ
+banding, Kuramoto cross-fire, online Hebbian renormalisation, origin
+overlap detection, and wormhole pick.
 
 ```
 $ make test
@@ -195,8 +219,13 @@ $ make test
   [test_rng]
   [test_utf8_clen]
   [test_dispatcher]
+  [test_schumann_tau]
+  [test_kuramoto_step]
+  [test_hebbian_update_sun]
+  [test_origin_overlap]
+  [test_wormhole_pick]
 
-=== 64 passed, 0 failed ===
+=== 78 passed, 0 failed ===
 ```
 
 ---
@@ -302,12 +331,15 @@ the engine is fully deterministic for a given calendar day.
 ## File layout
 
 ```
-le.c              — engine + embedded poems + main()
+le.c              — engine + 13 embedded poems + main()  (single super-file)
 tests/test_le.c   — unit tests (build with -DLE_NO_MAIN to share le.c)
 Makefile          — `make`, `make test`, `make run`, `make clean`
-poem1.txt … poem13.txt — the corpus (UTF-8, French)
 LICENSE
 ```
+
+The 13 poems used to live as separate `.txt` files; they are now
+hardcoded byte-for-byte into `le.c` as `POEM_1..POEM_13` so the engine
+is a true single super-file.
 
 ---
 

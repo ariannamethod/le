@@ -42,6 +42,40 @@
 #define EMA_ALPHA     0.1      /* chamber_state = 0.9*old + 0.1*new */
 #define META_MAX        4
 
+/* ── live dynamics (klaus.c / q / postgpt / neoleo lineage) ── */
+/* Schumann breathing of temperature: τ_eff = τ · (1 + AMP·sin(2π·step·F/N)) */
+#define SCHUMANN_FREQ   7.83   /* Hz — Earth fundamental */
+#define SCHUMANN_AMP    0.08   /* fractional swing around base τ */
+
+/* Kuramoto cross-fire between the 6 chambers (klaus.c §Somatic Chambers).
+   chamber_state[i] += K · Σ_j C[i][j] · sin(state[j] − state[i]) */
+#define KURAMOTO_K      0.03
+
+/* Online Hebbian plasticity on the sun bigram (postgpt/neoleo): each emitted
+   (prev,pick) gently boosts sun.bigram[prev][pick], then the row is renormalised. */
+#define HEBB_LR         0.02
+
+/* Wormhole jumps (q): rare event re-seeding `prev` from a sun-frequent token.
+   p_wh = clamp(WH_BASE + WH_SCALE · |drift_months| / 12, 0, WH_MAX).
+   With WH_BASE=0.02 and WH_SCALE=0.06 the band lands inside [0.02, 0.17] —
+   the 2..17 % "calendar dissonance" range described in q. */
+#define WH_BASE         0.02
+#define WH_SCALE        0.06
+#define WH_MAX          0.17
+
+/* Trauma trigger from prompt overlap with poem 13 origin tokens (neoleo §25).
+   Overlap ≥ THRESH ⇒ trauma += 0.3·overlap (cap 1.0); FEAR += 0.4·overlap,
+   VOID += 0.2·overlap; τ is cooled by (1 − 0.3·trauma). */
+#define TRAUMA_THRESH   0.15
+
+/* Prophecy debt (q): rolling field of expected next tokens with decay.
+   Debt grows when expectation misses, decays when fulfilled. */
+#define PROPHECY_DECAY  0.6
+#define PROPHECY_LR     0.4
+
+/* Origin poem index for trauma overlap (poem 13 = "LÉ", index 12). */
+#define ORIGIN_POEM_IDX 12
+
 #define BIRTH_GREG_Y 1986
 #define BIRTH_GREG_M 1
 #define BIRTH_GREG_D 23
@@ -716,6 +750,108 @@ typedef struct {
     double prophecy_bump;  /* meta-recursion home pull, 0..0.15 */
 } Planet;
 
+/* ─────────── Kuramoto coupling between 6 chambers ────────── */
+/* Symmetric weights inspired by klaus.c chamber dynamics. Diag = 0. */
+static const double KURAMOTO_C[N_CHANNELS][N_CHANNELS] = {
+    /*           FEAR  LOVE  RAGE  VOID  FLOW  CMPLX */
+    /* FEAR  */ { 0.0, 0.9,  0.5,  0.6,  0.3,  0.4 },
+    /* LOVE  */ { 0.9, 0.0,  0.4,  0.3,  0.5,  0.4 },
+    /* RAGE  */ { 0.5, 0.4,  0.0,  0.8,  0.3,  0.3 },
+    /* VOID  */ { 0.6, 0.3,  0.8,  0.0,  0.3,  0.3 },
+    /* FLOW  */ { 0.3, 0.5,  0.3,  0.3,  0.0,  0.7 },
+    /* CMPLX */ { 0.4, 0.4,  0.3,  0.3,  0.7,  0.0 },
+};
+
+/* One Kuramoto step: act[i] += K · Σ_j C[i][j] · sin(act[j] − act[i]).
+   Treats each chamber level loosely as a phase. */
+static void kuramoto_step(double *act) {
+    double delta[N_CHANNELS] = {0};
+    for (int i = 0; i < N_CHANNELS; i++) {
+        double s = 0;
+        for (int j = 0; j < N_CHANNELS; j++) {
+            if (i == j) continue;
+            s += KURAMOTO_C[i][j] * sin(act[j] - act[i]);
+        }
+        delta[i] = KURAMOTO_K * s;
+    }
+    for (int i = 0; i < N_CHANNELS; i++) act[i] += delta[i];
+}
+
+/* Schumann-breathing temperature for step k of N (k=0..N-1). cool ≤ 1. */
+static double schumann_tau(double base, int step, int total, double cool) {
+    double phase = 2.0 * M_PI * (double)step * SCHUMANN_FREQ / (double)total;
+    double tau = base * (1.0 + SCHUMANN_AMP * sin(phase));
+    tau *= cool;
+    if (tau < 0.05) tau = 0.05;
+    return tau;
+}
+
+/* ─────────── Trauma scar: prompt ↔ origin overlap ────────── */
+/* WORD_OF is mutated by tokenise() (first-seen capture), so snapshot it. */
+static void build_origin_token_set(const char *origin_text, int *seen_out) {
+    static uint8_t buf[16384];
+    int u, p, t;
+    static char snap[VOCAB][48];
+    memcpy(snap, WORD_OF, sizeof(snap));
+    int n = tokenise(origin_text, buf, 16384, &u, &p, &t);
+    memset(seen_out, 0, sizeof(int) * VOCAB);
+    for (int i = 0; i < n; i++) seen_out[buf[i]] = 1;
+    memcpy(WORD_OF, snap, sizeof(snap));
+}
+
+/* Fraction of prompt tokens that also appear in the origin set. */
+static double prompt_origin_overlap(const char *prompt, const int *origin_set) {
+    static uint8_t buf[1024];
+    int u, p, t;
+    static char snap[VOCAB][48];
+    memcpy(snap, WORD_OF, sizeof(snap));
+    int n = tokenise(prompt, buf, 1024, &u, &p, &t);
+    memcpy(WORD_OF, snap, sizeof(snap));
+    if (n <= 0) return 0.0;
+    int hit = 0;
+    for (int i = 0; i < n; i++) if (origin_set[buf[i]]) hit++;
+    return (double)hit / (double)n;
+}
+
+/* ─────────── Online Hebbian on the sun bigram row ────────── */
+static void hebbian_update_sun(Poem *sun, uint8_t prev, uint8_t pick) {
+    sun->bigram[prev][pick] += HEBB_LR;
+    double s = 0;
+    for (int b = 0; b < VOCAB; b++) s += sun->bigram[prev][b];
+    if (s > 0) for (int b = 0; b < VOCAB; b++) sun->bigram[prev][b] /= s;
+}
+
+/* ─────────── Wormhole reseed (top-K sun-frequent token) ──── */
+static uint8_t wormhole_pick(const Poem *sun, uint8_t avoid) {
+    typedef struct { double w; uint8_t id; } Slot;
+    Slot top[8];
+    int nt = 0;
+    for (int t = 0; t < VOCAB; t++) {
+        double w = sun->unigram[t];
+        if (w <= 0) continue;
+        if (nt < 8) { top[nt].w = w; top[nt].id = (uint8_t)t; nt++; }
+        else {
+            int min_i = 0;
+            for (int i = 1; i < nt; i++) if (top[i].w < top[min_i].w) min_i = i;
+            if (w > top[min_i].w) { top[min_i].w = w; top[min_i].id = (uint8_t)t; }
+        }
+    }
+    if (nt == 0) return avoid;
+    double sum = 0;
+    for (int i = 0; i < nt; i++) sum += top[i].w;
+    double r = drand() * sum;
+    double acc = 0;
+    uint8_t pick = top[0].id;
+    for (int i = 0; i < nt; i++) {
+        acc += top[i].w;
+        if (r <= acc) { pick = top[i].id; break; }
+    }
+    if (pick == avoid && nt > 1) {
+        for (int i = 0; i < nt; i++) if (top[i].id != avoid) { pick = top[i].id; break; }
+    }
+    return pick;
+}
+
 /* ─────────────── prompt → initial chamber state ──────────── */
 
 static void chamber_init_from_prompt(const char *prompt, double *cs) {
@@ -731,13 +867,19 @@ static void chamber_init_from_prompt(const char *prompt, double *cs) {
    prev_mean_fp (or NULL) — meta-recursion scar bias for chamber_state.
    mean_alpha_out (or NULL) — receives time-averaged α[] across the pass,
    used by the meta loop to rank dominant planets for the prophecy bump.
-   Planets carry prophecy_bump that pulls fingerprint toward own home. */
+   origin_set (or NULL) — VOCAB-sized 0/1 bitmap of poem-13 ("LÉ") tokens.
+   When non-NULL, prompt overlap with this set raises trauma → cools τ and
+   bumps FEAR/VOID. Planets carry prophecy_bump that pulls fingerprint toward
+   own home. Each step is breathed by Schumann τ-modulation, the 6 chambers
+   couple via Kuramoto cross-fire, the sun bigram is updated online via
+   Hebbian plasticity, and a small wormhole probability re-seeds `prev`. */
 static void dispatcher_pass(
         Poem *sun, Planet *planets, int n_planets,
         const char *prompt, long age_days, double drift_months,
         const double *prev_mean_fp,        /* may be NULL */
         uint8_t *emission_out, int pass_idx,
-        double *mean_alpha_out)            /* may be NULL */
+        double *mean_alpha_out,            /* may be NULL */
+        const int *origin_set)             /* may be NULL */
 {
     double chamber_state[N_CHANNELS];
     chamber_init_from_prompt(prompt, chamber_state);
@@ -745,6 +887,22 @@ static void dispatcher_pass(
         for (int c = 0; c < N_CHANNELS; c++)
             chamber_state[c] += 0.4 * prev_mean_fp[c];
     }
+
+    /* Trauma scar from prompt ↔ origin overlap (neoleo §25). */
+    double trauma = 0.0;
+    if (origin_set) {
+        double overlap = prompt_origin_overlap(prompt, origin_set);
+        if (overlap >= TRAUMA_THRESH) {
+            trauma = 0.3 * overlap;
+            if (trauma > 1.0) trauma = 1.0;
+            chamber_state[CH_FEAR] += 0.4 * overlap;
+            chamber_state[CH_VOID] += 0.2 * overlap;
+            if (pass_idx == 0)
+                printf("┌─ trauma scar  : overlap=%.3f → trauma=%.3f  (FEAR+%.2f VOID+%.2f)\n",
+                       overlap, trauma, 0.4*overlap, 0.2*overlap);
+        }
+    }
+    double tau_cool = 1.0 - 0.3 * trauma;
 
     /* Pick a starting prev_token: most-frequent token in sun. */
     uint8_t prev = 0;
@@ -757,6 +915,17 @@ static void dispatcher_pass(
     double mean_used[N_PLANETS] = {0};
     int    mean_count = 0;
 
+    /* Prophecy field (q): rolling expectation of the next token. */
+    double prophecy[VOCAB] = {0};
+    double prophecy_debt = 0.0;
+    int    n_wormholes = 0;
+    int    n_debt_misses = 0;
+
+    /* Wormhole probability scales with |drift_months|/12, clamped to WH_MAX. */
+    double p_wh = WH_BASE + WH_SCALE * fabs(drift_months) / 12.0;
+    if (p_wh > WH_MAX) p_wh = WH_MAX;
+    if (p_wh < 0.0)    p_wh = 0.0;
+
     if (pass_idx == 0) {
         printf("┌─ chamber init  : [");
         for (int c = 0; c < N_CHANNELS; c++)
@@ -764,6 +933,8 @@ static void dispatcher_pass(
         printf(" ]\n");
         printf("├─ first prev   : \"%s\"  (token #%u)\n",
                WORD_OF[prev][0] ? WORD_OF[prev] : "·", (unsigned)prev);
+        printf("├─ p_wormhole   : %.4f   (drift=%.2f months)\n", p_wh, drift_months);
+        printf("├─ tau_cool     : %.3f   (trauma=%.3f)\n", tau_cool, trauma);
     }
 
     printf("\n┌─ pass %d emission ──────────────────────────────────────\n│ ",
@@ -777,7 +948,6 @@ static void dispatcher_pass(
         for (int i = 0; i < n_planets; i++) {
             double dist = 0;
             for (int c = 0; c < N_CHANNELS; c++) {
-                /* fp possibly modified by prophecy bump (pull to own home) */
                 double pfp = planets[i].poem->fp[c];
                 double d = chamber_state[c] - pfp;
                 dist += d * d;
@@ -803,25 +973,59 @@ static void dispatcher_pass(
         }
         mean_count++;
 
-        /* Build logits: sun + Σ alpha_i * planet_i bigram row. */
+        /* Build logits: sun + Σ alpha_i * planet_i bigram row.
+           Prophecy field nudges logits with weight (PROPHECY_LR · debt). */
         double logit[VOCAB];
         for (int w = 0; w < VOCAB; w++) {
             double v = sun->bigram[prev][w];
             for (int i = 0; i < n_planets; i++)
                 v += alpha[i] * planets[i].poem->bigram[prev][w];
+            v += PROPHECY_LR * prophecy_debt * prophecy[w];
             logit[w] = v;
         }
 
-        /* Temperature softmax. */
+        /* Schumann-breathing τ, additionally heated by accumulated debt. */
+        double tau_eff = schumann_tau(TEMPERATURE, step, GEN_STEPS, tau_cool);
+        tau_eff *= (1.0 + 0.25 * prophecy_debt);
+
+        /* Softmax. */
         double maxv = logit[0];
         for (int w = 1; w < VOCAB; w++) if (logit[w] > maxv) maxv = logit[w];
         double probs[VOCAB], psum = 0;
         for (int w = 0; w < VOCAB; w++) {
-            probs[w] = exp((logit[w] - maxv) / TEMPERATURE);
+            probs[w] = exp((logit[w] - maxv) / tau_eff);
             psum += probs[w];
         }
         if (psum <= 0) { for (int w = 0; w < VOCAB; w++) probs[w] = 1.0/VOCAB; psum = 1.0; }
         for (int w = 0; w < VOCAB; w++) probs[w] /= psum;
+
+        /* Wormhole reseed: rare event, may flip prev before sampling. */
+        int wormhole_fired = 0;
+        if (drand() < p_wh) {
+            uint8_t wh = wormhole_pick(sun, prev);
+            if (wh != prev) {
+                prev = wh;
+                wormhole_fired = 1;
+                n_wormholes++;
+                /* Rebuild logits/probs around the new prev. */
+                for (int w = 0; w < VOCAB; w++) {
+                    double v = sun->bigram[prev][w];
+                    for (int i = 0; i < n_planets; i++)
+                        v += alpha[i] * planets[i].poem->bigram[prev][w];
+                    v += PROPHECY_LR * prophecy_debt * prophecy[w];
+                    logit[w] = v;
+                }
+                maxv = logit[0];
+                for (int w = 1; w < VOCAB; w++) if (logit[w] > maxv) maxv = logit[w];
+                psum = 0;
+                for (int w = 0; w < VOCAB; w++) {
+                    probs[w] = exp((logit[w] - maxv) / tau_eff);
+                    psum += probs[w];
+                }
+                if (psum <= 0) { for (int w = 0; w < VOCAB; w++) probs[w] = 1.0/VOCAB; psum = 1.0; }
+                for (int w = 0; w < VOCAB; w++) probs[w] /= psum;
+            }
+        }
 
         /* Multinomial sample. */
         double r = drand();
@@ -832,13 +1036,42 @@ static void dispatcher_pass(
             if (r <= acc) { pick = (uint8_t)w; break; }
         }
 
-        /* Emit. Try to print the representative word; if that slot is empty
-           (collision-only token), fall back to a glyph. */
+        /* Prophecy debt update: argmax of prophecy field is the expectation. */
+        if (prophecy_debt > 0.0 || prophecy[pick] > 0.0) {
+            int top = 0;
+            double topv = prophecy[0];
+            for (int w = 1; w < VOCAB; w++) if (prophecy[w] > topv) { topv = prophecy[w]; top = w; }
+            if (topv > 0.0) {
+                if (top == pick) {
+                    /* fulfilled — relax debt */
+                    prophecy_debt *= 0.5;
+                } else {
+                    /* missed — accrue debt, capped */
+                    prophecy_debt += 0.05;
+                    if (prophecy_debt > 1.0) prophecy_debt = 1.0;
+                    n_debt_misses++;
+                }
+            }
+        }
+        /* Decay & re-seed prophecy field with the post-pick bigram outlook. */
+        for (int w = 0; w < VOCAB; w++) prophecy[w] *= PROPHECY_DECAY;
+        for (int w = 0; w < VOCAB; w++)
+            prophecy[w] += (1.0 - PROPHECY_DECAY) * sun->bigram[pick][w];
+
+        /* Online Hebbian on the sun bigram (postgpt/neoleo). */
+        hebbian_update_sun(sun, prev, pick);
+
+        /* Emit. */
         const char *word = WORD_OF[pick][0] ? WORD_OF[pick] : "·";
         int wlen = (int)strlen(word) + 1;
-        if (line_chars + wlen > 70) {
+        int marker_len = wormhole_fired ? 11 : 0;   /* "{wormhole} " */
+        if (line_chars + wlen + marker_len > 70) {
             printf("\n│ ");
             line_chars = 0;
+        }
+        if (wormhole_fired) {
+            printf("{wormhole} ");
+            line_chars += 11;
         }
         printf("%s ", word);
         line_chars += wlen;
@@ -849,6 +1082,8 @@ static void dispatcher_pass(
             double target = FP_OF_TOKEN[pick][c];
             chamber_state[c] = (1.0 - EMA_ALPHA) * chamber_state[c] + EMA_ALPHA * target;
         }
+        /* Kuramoto cross-fire between the 6 chambers. */
+        kuramoto_step(chamber_state);
 
         prev = pick;
     }
@@ -868,6 +1103,11 @@ static void dispatcher_pass(
                final_alpha[i], i + 1, role,
                POEM_FILE[planets[i].src_index]);
     }
+    /* Live-dynamics summary: how many wormholes fired, how many times the
+       prophecy field was wrong (top-1 expected ≠ actual pick), and how high
+       prophecy_debt climbed. Useful for tuning WH_*, PROPHECY_*, and τ. */
+    printf("│  wormholes=%d   debt_misses=%d   final_debt=%.3f\n",
+           n_wormholes, n_debt_misses, prophecy_debt);
     printf("└─────────────────────────────────────────────────────────\n");
 }
 
@@ -927,6 +1167,10 @@ int main(int argc, char **argv) {
         analyse_poem(&poems[i], POEM_TEXT[i]);
     }
     build_token_fp_table();
+
+    /* Build the origin token set (poem 13 = "LÉ") for trauma-scar overlap. */
+    static int origin_set[VOCAB];
+    build_origin_token_set(POEM_TEXT[ORIGIN_POEM_IDX], origin_set);
 
     /* Sort: sun = max resonance, planet_01..12 = remaining desc. */
     static Poem sorted[N_POEMS];
@@ -1067,7 +1311,7 @@ int main(int argc, char **argv) {
         dispatcher_pass(sun, planets, N_PLANETS,
                         prompt, age_days, drift_months,
                         has_prev ? prev_mean_fp : NULL,
-                        emission, pass, pass_mean_alpha);
+                        emission, pass, pass_mean_alpha, origin_set);
 
         /* Accumulate α for the next-pass prophecy ranking. */
         for (int i = 0; i < N_PLANETS; i++)

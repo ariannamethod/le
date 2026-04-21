@@ -182,7 +182,9 @@ static void test_calendar(void) {
     /* Known Reingold/Dershowitz value: 2000-01-01 -> R.D. 730120 */
     CHECK(greg_to_rd(2000, 1, 1) == 730120L, "greg_to_rd(2000-01-01) == 730120");
 
-    /* Birth 1986-01-23 (Gregorian) is 13 Shevat 5746 by Reingold's tables. */
+    /* Birth 1986-01-23 (Gregorian) is 13 Shevat 5746 by Reingold/Dershowitz
+       Hebrew tables; the loose ±2 window absorbs any boundary ambiguity
+       around dawn/dusk in the molad+dechiyot computation. */
     long birth_rd = greg_to_rd(BIRTH_GREG_Y, BIRTH_GREG_M, BIRTH_GREG_D);
     long hy; int hm, hd;
     rd_to_hebrew(birth_rd, &hy, &hm, &hd);
@@ -262,7 +264,7 @@ static void test_dispatcher(void) {
     silence_stdout();
     dispatcher_pass(sun, planets, N_PLANETS,
                     "amour silence", 14000, 12.0,
-                    NULL, emission, 0, mean_alpha);
+                    NULL, emission, 0, mean_alpha, NULL);
     restore_stdout();
 
     double s = 0;
@@ -274,15 +276,142 @@ static void test_dispatcher(void) {
     CHECK_NEAR(s, 1.0, 1e-6, "mean α[] sums to 1");
     CHECK(neg == 0, "all mean α[i] non-negative");
 
+    /* Re-analyse from scratch so Hebbian online updates from the first run
+       don't bleed into the reproducibility check. */
+    for (int i = 0; i < N_POEMS; i++) {
+        memset(&poems[i], 0, sizeof(Poem));
+        poems[i].src_index = i;
+        analyse_poem(&poems[i], POEM_TEXT[i]);
+    }
+    memcpy(sorted, poems, sizeof(sorted));
+    qsort(sorted, N_POEMS, sizeof(Poem), cmp_poem_desc);
+    sun = &sorted[0];
+    for (int i = 0; i < N_PLANETS; i++) {
+        planets[i].poem = &sorted[i + 1];
+        planets[i].src_index = sorted[i + 1].src_index;
+    }
+
     seed_rng(42);
     uint8_t emission2[GEN_STEPS];
     silence_stdout();
     dispatcher_pass(sun, planets, N_PLANETS,
                     "amour silence", 14000, 12.0,
-                    NULL, emission2, 0, NULL);
+                    NULL, emission2, 0, NULL, NULL);
     restore_stdout();
     CHECK(memcmp(emission, emission2, sizeof(emission)) == 0,
           "dispatcher reproducible from same seed");
+}
+
+/* 11. Schumann-breathing temperature: amplitude bounded, returns base at k=0. */
+static void test_schumann_tau(void) {
+    printf("  [test_schumann_tau]\n");
+    double base = TEMPERATURE;
+    /* sin(0) = 0  ⇒  tau == base (with cool=1) */
+    CHECK_NEAR(schumann_tau(base, 0, GEN_STEPS, 1.0), base, 1e-9,
+               "schumann_tau at step=0 equals base");
+    /* tau is bounded inside base · (1 ± SCHUMANN_AMP) for cool=1 */
+    double lo = base * (1.0 - SCHUMANN_AMP) - 1e-9;
+    double hi = base * (1.0 + SCHUMANN_AMP) + 1e-9;
+    int in_band = 1;
+    for (int k = 0; k < GEN_STEPS; k++) {
+        double t = schumann_tau(base, k, GEN_STEPS, 1.0);
+        if (t < lo || t > hi) { in_band = 0; break; }
+    }
+    CHECK(in_band, "schumann_tau stays in [base·(1-AMP), base·(1+AMP)]");
+    /* Trauma cool reduces τ */
+    CHECK(schumann_tau(base, 5, GEN_STEPS, 0.7) <
+          schumann_tau(base, 5, GEN_STEPS, 1.0) + 1e-9,
+          "trauma cool ≤1 lowers τ");
+    /* Floor never below 0.05 */
+    CHECK(schumann_tau(base, 7, GEN_STEPS, 0.0) >= 0.05 - 1e-12,
+          "schumann_tau respects 0.05 floor");
+}
+
+/* 12. Kuramoto step is conservative (sum drifts <1e-9 per step) and pulls
+       chambers toward each other. */
+static void test_kuramoto_step(void) {
+    printf("  [test_kuramoto_step]\n");
+    double s[N_CHANNELS] = { 1.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+    double before = 0;
+    for (int c = 0; c < N_CHANNELS; c++) before += s[c];
+    double max_before = s[CH_FEAR];
+    kuramoto_step(s);
+    double after = 0;
+    for (int c = 0; c < N_CHANNELS; c++) after += s[c];
+    /* sin(0-1) for j!=FEAR is negative so FEAR receives a negative kick;
+       other channels receive positive kicks. Net drift in sum is small. */
+    CHECK(fabs(after - before) < 0.5, "kuramoto sum drift bounded");
+    CHECK(s[CH_FEAR] < max_before, "FEAR pulled down by other chambers");
+    int someone_rose = 0;
+    for (int c = 0; c < N_CHANNELS; c++)
+        if (c != CH_FEAR && s[c] > 0.0) { someone_rose = 1; break; }
+    CHECK(someone_rose, "at least one other chamber rose toward FEAR");
+}
+
+/* 13. Online Hebbian update boosts the (prev,pick) bigram and re-normalises. */
+static void test_hebbian_update_sun(void) {
+    printf("  [test_hebbian_update_sun]\n");
+    Poem p;
+    memset(&p, 0, sizeof(p));
+    analyse_poem(&p, POEM_TEXT[0]);
+    /* find a row that already has mass */
+    uint8_t prev = 0;
+    for (int t = 0; t < VOCAB; t++) {
+        double s = 0;
+        for (int b = 0; b < VOCAB; b++) s += p.bigram[t][b];
+        if (s > 0.5) { prev = (uint8_t)t; break; }
+    }
+    uint8_t pick = (uint8_t)((prev + 7) & 0xFF);
+    double before = p.bigram[prev][pick];
+    hebbian_update_sun(&p, prev, pick);
+    double after = p.bigram[prev][pick];
+    CHECK(after > before, "Hebbian update increases (prev,pick) probability");
+    double s = 0;
+    for (int b = 0; b < VOCAB; b++) s += p.bigram[prev][b];
+    CHECK_NEAR(s, 1.0, 1e-9, "row remains normalised after Hebbian update");
+}
+
+/* 14. Origin overlap detection: prompt of poem-13 keywords overlaps,
+       neutral prompt does not. */
+static void test_origin_overlap(void) {
+    printf("  [test_origin_overlap]\n");
+    static int origin[VOCAB];
+    /* WORD_OF must be initialised so the test is independent of run order. */
+    memset(WORD_OF, 0, sizeof(WORD_OF));
+    build_origin_token_set(POEM_TEXT[ORIGIN_POEM_IDX], origin);
+    int count = 0;
+    for (int i = 0; i < VOCAB; i++) if (origin[i]) count++;
+    CHECK(count > 5, "origin set non-empty (poem 13 has multiple tokens)");
+
+    /* Poem 13 starts: "LÉ\n\nLé je suis\n\nJe suis l'ombre…" — these MUST overlap. */
+    double hi = prompt_origin_overlap("je suis l'ombre derrière la flamme", origin);
+    double lo = prompt_origin_overlap("xyzzy plugh frobnicate", origin);
+    CHECK(hi > 0.3, "prompt drawn from poem 13 has high origin overlap");
+    CHECK(lo == 0.0, "neutral garbage prompt has zero overlap");
+}
+
+/* 15. Wormhole_pick returns a token from the sun's high-frequency support
+       and prefers something other than `avoid` when possible. */
+static void test_wormhole_pick(void) {
+    printf("  [test_wormhole_pick]\n");
+    Poem p;
+    memset(&p, 0, sizeof(p));
+    analyse_poem(&p, POEM_TEXT[0]);
+    /* find the most frequent token */
+    uint8_t top = 0;
+    double best = -1;
+    for (int t = 0; t < VOCAB; t++)
+        if (p.unigram[t] > best) { best = p.unigram[t]; top = (uint8_t)t; }
+
+    seed_rng(7);
+    int saw_other = 0, all_have_freq = 1;
+    for (int trial = 0; trial < 30; trial++) {
+        uint8_t pick = wormhole_pick(&p, top);
+        if (pick != top) saw_other = 1;
+        if (p.unigram[pick] <= 0) { all_have_freq = 0; break; }
+    }
+    CHECK(saw_other, "wormhole_pick avoids the `avoid` token at least once");
+    CHECK(all_have_freq, "wormhole_pick always returns a sun-frequent token");
 }
 
 /* ───────────── runner ───────────── */
@@ -299,6 +428,11 @@ int main(void) {
     test_rng();
     test_utf8_clen();
     test_dispatcher();
+    test_schumann_tau();
+    test_kuramoto_step();
+    test_hebbian_update_sun();
+    test_origin_overlap();
+    test_wormhole_pick();
     printf("\n=== %d passed, %d failed ===\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }
